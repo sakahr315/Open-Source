@@ -588,7 +588,26 @@ local function getOwnedPets()
 end
 
 -- ================================================
--- AUTO HATCH (FIXED)
+-- DYNAMIC HATCH COUNT
+-- ================================================
+local function getHatchCount()
+    local ok, result = pcall(function()
+        local customHatch = LocalPlayer.PlayerGui.GameUI.Menus.EggOpen.CustomHatch
+        for _, v in ipairs(customHatch:GetChildren()) do
+            if v:IsA("TextLabel") and string.find(v.Text, "Max") then
+                local num = string.match(v.Text, "%d+")
+                if num then return tonumber(num) end
+            end
+        end
+    end)
+    if ok and type(result) == "number" and result > 1 then
+        return result
+    end
+    return 1
+end
+
+-- ================================================
+-- AUTO HATCH
 -- ================================================
 local function startHatching()
     while State.hatching do
@@ -599,7 +618,7 @@ local function startHatching()
                 return EggRF:InvokeServer("Bunny", nil, nil, true, true, true, nil)
             end)
             if ok and result then
-                Stats.eggs += 1
+                Stats.eggs += getHatchCount()
                 updateStatLabel("eggs")
             end
 
@@ -707,18 +726,22 @@ end
 -- ================================================
 
 MainTab:CreateToggle({
-    Name = "Auto Fight Boss",
-    Callback = function(v)
+    Name         = "Auto Fight Boss",
+    CurrentValue = false,
+    Flag         = "AutoFightBoss",
+    Callback     = function(v)
         if v and not checkRemotes("Auto Fight Boss") then return end
         State.clicking = v
         critTick = 0
         if v then task.spawn(startClicking) end
-    end
+    end,
 })
 
 MainTab:CreateToggle({
-    Name = "Hide Map (Performance)",
-    Callback = function(v)
+    Name         = "Hide Map (Performance)",
+    CurrentValue = false,
+    Flag         = "HideMap",
+    Callback     = function(v)
         State.mapHidden = v
         if v then
             hideMap()
@@ -737,12 +760,14 @@ MainTab:CreateToggle({
                 Image    = 4483362458,
             })
         end
-    end
+    end,
 })
 
 EventTab:CreateToggle({
-    Name = "Auto Collect Carrots",
-    Callback = function(v)
+    Name         = "Auto Collect Carrots",
+    CurrentValue = false,
+    Flag         = "AutoCollectCarrots",
+    Callback     = function(v)
         if v and not checkRemotes("Auto Collect Carrots") then return end
         State.collecting = v
         if v then
@@ -753,39 +778,47 @@ EventTab:CreateToggle({
             stopCollecting()
             scheduleStatsRemoval()
         end
-    end
+    end,
 })
 
 EventTab:CreateToggle({
-    Name = "Auto Hatch",
-    Callback = function(v)
+    Name         = "Auto Hatch",
+    CurrentValue = false,
+    Flag         = "AutoHatch",
+    Callback     = function(v)
         if v and not checkRemotes("Auto Hatch") then return end
         State.hatching = v
         if v then task.spawn(startHatching) end
-    end
+    end,
 })
 
 EventTab:CreateToggle({
-    Name = "Auto Upgrade",
-    Callback = function(v)
+    Name         = "Auto Upgrade",
+    CurrentValue = false,
+    Flag         = "AutoUpgrade",
+    Callback     = function(v)
         if v and not checkRemotes("Auto Upgrade") then return end
         State.upgrading = v
         if v then task.spawn(startAutoUpgrade) end
-    end
+    end,
 })
 
 EventTab:CreateToggle({
-    Name = "Auto Ascend",
-    Callback = function(v)
+    Name         = "Auto Ascend",
+    CurrentValue = false,
+    Flag         = "AutoAscend",
+    Callback     = function(v)
         if v and not checkRemotes("Auto Ascend") then return end
         State.ascending = v
         if v then task.spawn(startAutoAscend) end
-    end
+    end,
 })
 
 EventTab:CreateToggle({
-    Name = "Auto Rune",
-    Callback = function(v)
+    Name         = "Auto Rune",
+    CurrentValue = false,
+    Flag         = "AutoRune",
+    Callback     = function(v)
         if v and not checkRemotes("Auto Rune") then return end
         State.runing = v
         if v then
@@ -797,14 +830,16 @@ EventTab:CreateToggle({
                 Image    = 4483362458,
             })
         end
-    end
+    end,
 })
 
 MutateTab:CreateToggle({
-    Name = "Auto Mutate All Pets",
-    Callback = function(v)
+    Name         = "Auto Mutate All Pets",
+    CurrentValue = false,
+    Flag         = "AutoMutate",
+    Callback     = function(v)
         if v and not checkRemotes("Auto Mutate") then return end
         State.mutating = v
         if v then task.spawn(startAutoMutate) end
-    end
+    end,
 })
