@@ -388,11 +388,13 @@ end
 
 -- ================================================
 -- CLEANUP: DISABLE NON-CORE SCRIPTS
+-- Only disables cosmetic/animation Shiners, nothing that affects gameplay UI
 -- ================================================
 task.spawn(function()
     LocalPlayer:WaitForChild("PlayerGui")
     LocalPlayer:WaitForChild("PlayerScripts")
 
+    -- Safe list: only purely cosmetic scripts that won't affect UI interaction
     local toDisable = {
         "PlayerGui.GameUI.Left.Buttons.Store.Frame.Shiner",
         "PlayerGui.GameUI.Menus.Store.Content.Limited.Lower Egg.Frame.Shiner",
@@ -400,9 +402,6 @@ task.spawn(function()
         "PlayerGui.GameUI.Menus.Store.Content.EndlessBundle.List.ScrollingFrame.2.Button.Frame.Shiner",
         "PlayerGui.GameUI.Menus.SeasonPass.Frames.Premium.BuyPremium.Frame.Shiner",
         "PlayerGui.GameUI.Menus.SeasonPass.Frames.Premium.BuyNormal.Frame.Shiner",
-        "PlayerGui.GameUI.Menus.Inventory.Display.Pets.ScrollingFrame.Pets.24c1db07-045c-48ef-9090-5078646aa1d3.Toggle.ShinyGradient.Shiner",
-        "PlayerGui.GameUI.Menus.Inventory.Display.Pets.ScrollingFrame.Pets.c7217028-c9bd-4d86-b71f-64d938c00f89.Toggle.ShinyGradient.Shiner",
-        "PlayerGui.GameUI.Menus.Inventory.Display.Pets.ScrollingFrame.Pets.988ec913-cab0-4d1d-9c63-516cce6efd80.Toggle.ShinyGradient.Shiner",
         "PlayerScripts.Gui.Effects.ButtonAnimations",
         "PlayerScripts.Gui.Effects.ConstantRotate",
         "PlayerScripts.Gui.Effects.ConstantShake",
@@ -410,7 +409,6 @@ task.spawn(function()
         "PlayerScripts.Gui.Effects.ConstantTexture",
         "PlayerScripts.Gui.Effects.ColorCycle",
         "PlayerScripts.Gui.Effects.Halloween",
-        "PlayerScripts.Gui.Handling.UIStroke",
         "PlayerScripts.Gui.Main.InviteFriends",
         "PlayerScripts.Gui.Main.Welcome",
         "PlayerScripts.Gui.Main.WelcomePack",
@@ -418,7 +416,6 @@ task.spawn(function()
         "PlayerScripts.Gui.Main.Guide",
         "PlayerScripts.Gui.Main.UpdateLog",
         "PlayerScripts.Gui.Main.Gifts",
-        "PlayerGui.Fighting.Wrestle.DoubleFightingStrength.LocalScript",
     }
 
     for _, path in ipairs(toDisable) do
@@ -433,21 +430,20 @@ task.spawn(function()
         end
     end
 
-    local petsFolder = LocalPlayer.PlayerGui
+    -- Only disable Shiners inside the Store menu, NOT inside Inventory/Pets/AutoTrain
+    local storeFolder = LocalPlayer.PlayerGui
         :FindFirstChild("GameUI")
-        and LocalPlayer.PlayerGui.GameUI
-        :FindFirstChild("Menus")
-        and LocalPlayer.PlayerGui.GameUI.Menus
-        :FindFirstChild("Inventory")
+        and LocalPlayer.PlayerGui.GameUI:FindFirstChild("Menus")
+        and LocalPlayer.PlayerGui.GameUI.Menus:FindFirstChild("Store")
 
-    if petsFolder then
+    if storeFolder then
         local function disableShiner(inst)
             if inst:IsA("LocalScript") and inst.Name == "Shiner" then
                 inst.Enabled = false
             end
         end
-        for _, desc in ipairs(petsFolder:GetDescendants()) do disableShiner(desc) end
-        petsFolder.DescendantAdded:Connect(disableShiner)
+        for _, desc in ipairs(storeFolder:GetDescendants()) do disableShiner(desc) end
+        storeFolder.DescendantAdded:Connect(disableShiner)
     end
 end)
 
@@ -622,7 +618,6 @@ local function startHatching()
                 updateStatLabel("eggs")
             end
 
-            -- Check for new rare pets
             task.wait(0.3)
             local afterPets = getOwnedPets()
             for uuid, data in pairs(afterPets) do
