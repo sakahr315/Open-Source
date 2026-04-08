@@ -1,48 +1,70 @@
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "MRC'S AWS HUB",
-    LoadingTitle = "Loading MRC'S AWS HUB",
+    Name            = "MRC'S AWS HUB",
+    LoadingTitle    = "Loading MRC'S AWS HUB",
     LoadingSubtitle = "Made by @MRC__",
-    Theme = "Default",
+    Theme           = "Default",
 })
 
 task.wait(2)
+
+-- ================================================
+-- DISCORD PROMO — STARTUP NOTIFICATION
+-- ================================================
+Rayfield:Notify({
+    Title    = "💬 Join Our Discord!",
+    Content  = "Get updates, report bugs & chat: discord.gg/YV3GjGw3PY",
+    Duration = 8,
+    Image    = 4483362458,
+})
 
 local MainTab   = Window:CreateTab("Main",   4483362458)
 local EventTab  = Window:CreateTab("Event",  4483362458)
 local MutateTab = Window:CreateTab("Mutate", 4483362458)
 
+-- ================================================
 -- SERVICES
-local RS           = game:GetService("ReplicatedStorage")
-local Players      = game:GetService("Players")
-local VirtualUser  = game:GetService("VirtualUser")
-local TweenService = game:GetService("TweenService")
-local HttpService  = game:GetService("HttpService")
+-- ================================================
+local RS              = game:GetService("ReplicatedStorage")
+local Players         = game:GetService("Players")
+local VirtualUser     = game:GetService("VirtualUser")
+local TweenService    = game:GetService("TweenService")
+local HttpService     = game:GetService("HttpService")
+local TextChatService = game:GetService("TextChatService")
+local Lighting        = game:GetService("Lighting")
 
 local LocalPlayer = Players.LocalPlayer
 
+-- ================================================
 -- ANTI AFK
+-- ================================================
 LocalPlayer.Idled:Connect(function()
     VirtualUser:CaptureController()
     VirtualUser:ClickButton2(Vector2.new())
 end)
 
+-- ================================================
 -- STATE
+-- ================================================
 local State = {
-    collecting = false,
-    hatching   = false,
-    clicking   = false,
-    mutating   = false,
-    upgrading  = false,
-    ascending  = false,
-    runing     = false,
-    mapHidden  = false,
+    collecting    = false,
+    hatching      = false,
+    hatchingEvent = false,
+    clicking      = false,
+    mutating      = false,
+    upgrading     = false,
+    ascending     = false,
+    running       = false,
+    mapHidden     = false,
+    screenHidden  = false,
 }
 local connection   = nil
 local remotesReady = false
 
+-- ================================================
 -- STATS
+-- ================================================
 local Stats = {
     carrots   = 0,
     eggs      = 0,
@@ -52,15 +74,48 @@ local Stats = {
 }
 
 -- ================================================
+-- MILESTONES
+-- ================================================
+local Milestones = {
+    carrots   = { 500, 1000, 5000, 10000 },
+    eggs      = { 50, 100, 500 },
+    mutations = { 10, 50, 100 },
+    runes     = { 50, 100, 500 },
+}
+local MilestonesHit = {
+    carrots   = {},
+    eggs      = {},
+    mutations = {},
+    runes     = {},
+}
+local milestoneIcons = { carrots = "🥕", eggs = "🥚", mutations = "✨", runes = "🔮" }
+
+local function checkMilestone(key, value)
+    local list = Milestones[key]
+    if not list then return end
+    for _, threshold in ipairs(list) do
+        if value >= threshold and not MilestonesHit[key][threshold] then
+            MilestonesHit[key][threshold] = true
+            Rayfield:Notify({
+                Title    = milestoneIcons[key] .. " Milestone Hit!",
+                Content  = threshold .. " " .. key .. " reached! Share the hub: discord.gg/YV3GjGw3PY",
+                Duration = 6,
+                Image    = 4483362458,
+            })
+        end
+    end
+end
+
+-- ================================================
 -- DISCORD WEBHOOK LOGGING
 -- ================================================
 local WEBHOOK_URL      = "https://discord.com/api/webhooks/1490484527691464825/RlFEYNA4vtlb-yNrrMHHVmMks5dJKocU28F8tulLOKxxHdrViMqqJNdDNCqWO4BJDNcn"
 local RARE_WEBHOOK_URL = "https://discord.com/api/webhooks/1490492113123807363/CYpjs3tmrjrOBMienU8lq4sVI5m8_fEt90neYNiF_HrRtTiw-wiYY7-hWZwhzj4gX-Si"
 
 local RARE_PETS = {
-    ["Giga Egg Fox"]          = true,
-    ["Mega Easter Goat"]      = true,
-    ["Olympic Blade Carrot"]  = true,
+    ["Giga Egg Fox"]         = true,
+    ["Mega Easter Goat"]     = true,
+    ["Olympic Blade Carrot"] = true,
 }
 
 local function sendWebhook(title, description, color)
@@ -76,7 +131,7 @@ local function sendWebhook(title, description, color)
                         title       = title,
                         description = description,
                         color       = color or 7419530,
-                        footer      = { text = "MRC'S AWS HUB" },
+                        footer      = { text = "MRC'S AWS HUB • discord.gg/YV3GjGw3PY" },
                     }}
                 }),
             })
@@ -95,11 +150,11 @@ local function sendRareWebhook(petName)
                 Body    = HttpService:JSONEncode({
                     embeds = {{
                         title       = "🌟 Rare Pet Hatched!",
-                        description = "**User:** " .. Players.LocalPlayer.Name ..
+                        description = "**User:** " .. LocalPlayer.Name ..
                                       "\n**Pet:** " .. petName ..
                                       "\n**Eggs Hatched This Session:** " .. Stats.eggs,
                         color       = 16766720,
-                        footer      = { text = "MRC'S AWS HUB" },
+                        footer      = { text = "MRC'S AWS HUB • discord.gg/YV3GjGw3PY" },
                     }}
                 }),
             })
@@ -108,21 +163,19 @@ local function sendRareWebhook(petName)
 end
 
 local function logExecution()
-    local player = Players.LocalPlayer
     sendWebhook(
         "⚡ Script Executed",
-        "**User:** " .. player.Name ..
-        "\n**Display Name:** " .. player.DisplayName ..
-        "\n**Account Age:** " .. player.AccountAge .. " days",
+        "**User:** " .. LocalPlayer.Name ..
+        "\n**Display Name:** " .. LocalPlayer.DisplayName ..
+        "\n**Account Age:** " .. LocalPlayer.AccountAge .. " days",
         5814783
     )
 end
 
 local function logSessionSummary()
-    local player = Players.LocalPlayer
     sendWebhook(
         "📊 Session Summary",
-        "**User:** " .. player.Name ..
+        "**User:** " .. LocalPlayer.Name ..
         "\n🥕 Carrots Collected: **" .. Stats.carrots .. "**" ..
         "\n🥚 Eggs Hatched: **" .. Stats.eggs .. "**" ..
         "\n✨ Pets Mutated: **" .. Stats.mutations .. "**" ..
@@ -132,11 +185,83 @@ local function logSessionSummary()
     )
 end
 
-Players.LocalPlayer.AncestryChanged:Connect(function()
-    if not Players.LocalPlayer:IsDescendantOf(game) then
-        logSessionSummary()
-    end
+Players.PlayerRemoving:Connect(function(player)
+    if player == LocalPlayer then logSessionSummary() end
 end)
+
+-- ================================================
+-- DISCORD INVITE (90s)
+-- ================================================
+task.delay(90, function()
+    pcall(function()
+        if syn and syn.open_url then
+            syn.open_url("https://discord.gg/YV3GjGw3PY")
+        elseif typeof(openurl) == "function" then
+            openurl("https://discord.gg/YV3GjGw3PY")
+        else
+            setclipboard("https://discord.gg/YV3GjGw3PY")
+        end
+    end)
+    Rayfield:Notify({
+        Title    = "Join Our Discord!",
+        Content  = "discord.gg/YV3GjGw3PY — copied to clipboard if it didn't open!",
+        Duration = 8,
+        Image    = 4483362458,
+    })
+end)
+
+-- ================================================
+-- RARE PET DETECTION VIA GLOBAL CHAT
+-- ================================================
+local function setupChatRareDetection()
+    local ok = pcall(function()
+        TextChatService.MessageReceived:Connect(function(msg)
+            local text = msg.Text or ""
+            if string.find(text, LocalPlayer.Name, 1, true) or string.find(text, LocalPlayer.DisplayName, 1, true) then
+                for petName in pairs(RARE_PETS) do
+                    if string.find(text, petName, 1, true) then
+                        sendRareWebhook(petName)
+                        Rayfield:Notify({
+                            Title    = "🌟 RARE PET!",
+                            Content  = "Chat detected: " .. petName,
+                            Duration = 10,
+                            Image    = 4483362458,
+                        })
+                        break
+                    end
+                end
+            end
+        end)
+    end)
+    if not ok then
+        pcall(function()
+            local chatGui   = LocalPlayer:WaitForChild("PlayerGui"):WaitForChild("Chat", 10)
+            local chatFrame = chatGui and chatGui:FindFirstChildWhichIsA("Frame", true)
+            if chatFrame then
+                chatFrame.DescendantAdded:Connect(function(obj)
+                    if obj:IsA("TextLabel") then
+                        local text = obj.Text or ""
+                        if string.find(text, LocalPlayer.Name, 1, true) or string.find(text, LocalPlayer.DisplayName, 1, true) then
+                            for petName in pairs(RARE_PETS) do
+                                if string.find(text, petName, 1, true) then
+                                    sendRareWebhook(petName)
+                                    Rayfield:Notify({
+                                        Title    = "🌟 RARE PET!",
+                                        Content  = "Chat detected: " .. petName,
+                                        Duration = 10,
+                                        Image    = 4483362458,
+                                    })
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end)
+            end
+        end)
+    end
+end
+task.spawn(setupChatRareDetection)
 
 -- ================================================
 -- STATS UI
@@ -156,14 +281,13 @@ local statConfig = {
 
 local function createStatsUI()
     if statsGui then return end
-
     local playerGui = LocalPlayer:WaitForChild("PlayerGui")
 
     statsGui = Instance.new("ScreenGui")
-    statsGui.Name            = "MRCStatsOverlay"
-    statsGui.ResetOnSpawn    = false
-    statsGui.ZIndexBehavior  = Enum.ZIndexBehavior.Sibling
-    statsGui.Parent          = playerGui
+    statsGui.Name           = "MRCStatsOverlay"
+    statsGui.ResetOnSpawn   = false
+    statsGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    statsGui.Parent         = playerGui
 
     local container = Instance.new("Frame")
     container.Name                   = "Container"
@@ -232,7 +356,6 @@ local function createStatsUI()
 
         local iconLabel = Instance.new("TextLabel")
         iconLabel.Size                   = UDim2.new(0, 20, 1, 0)
-        iconLabel.Position               = UDim2.new(0, 0, 0, 0)
         iconLabel.BackgroundTransparency = 1
         iconLabel.Text                   = cfg.icon
         iconLabel.TextSize               = 13
@@ -273,18 +396,13 @@ local function createStatsUI()
 end
 
 local function updateStatLabel(key)
-    if statLabels[key] then
-        statLabels[key].Text = tostring(Stats[key])
-        local lbl = statLabels[key]
-        TweenService:Create(lbl, TweenInfo.new(0.08), {
-            TextColor3 = Color3.fromRGB(180, 130, 255)
-        }):Play()
-        task.delay(0.15, function()
-            TweenService:Create(lbl, TweenInfo.new(0.2), {
-                TextColor3 = Color3.fromRGB(255, 255, 255)
-            }):Play()
-        end)
-    end
+    if not statLabels[key] then return end
+    statLabels[key].Text = tostring(Stats[key])
+    local lbl = statLabels[key]
+    TweenService:Create(lbl, TweenInfo.new(0.08), { TextColor3 = Color3.fromRGB(180, 130, 255) }):Play()
+    task.delay(0.15, function()
+        TweenService:Create(lbl, TweenInfo.new(0.2), { TextColor3 = Color3.fromRGB(255, 255, 255) }):Play()
+    end)
 end
 
 local function removeStatsUI()
@@ -313,10 +431,7 @@ local function scheduleStatsRemoval()
 end
 
 local function cancelStatsRemoval()
-    if hideCountdown then
-        task.cancel(hideCountdown)
-        hideCountdown = nil
-    end
+    if hideCountdown then task.cancel(hideCountdown); hideCountdown = nil end
 end
 
 -- ================================================
@@ -325,22 +440,18 @@ end
 local function getRemote(path)
     local ok, result = pcall(function()
         local node = RS
-        for _, key in ipairs(path) do
-            node = node:WaitForChild(key, 5)
-        end
+        for _, key in ipairs(path) do node = node:WaitForChild(key, 5) end
         return node
     end)
     return ok and result or nil
 end
 
-local RF, EggRF, ClickRF, CritRF, PetRF, MutateRF, UpgradeRF, AscendRF, RuneRF
+local RF, BatchRF, EggRF, ClickRF, CritRF, PetRF, MutateRF, UpgradeRF, AscendRF, RuneRF
 
 task.spawn(function()
     local timeout = 30
     local elapsed = 0
-    repeat
-        task.wait(1)
-        elapsed += 1
+    repeat task.wait(1); elapsed += 1
     until RS:FindFirstChild("Packages") or elapsed >= timeout
 
     if elapsed >= timeout then
@@ -353,6 +464,7 @@ task.spawn(function()
     end
 
     RF        = getRemote({"Packages","Knit","Services","CarrotSpawningService","RF","CarrotCollected"})
+    BatchRF   = getRemote({"Packages","Knit","Services","CarrotSpawningService","RF","CarrotCollectedBatch"})
     EggRF     = getRemote({"Packages","Knit","Services","EggService","RF","purchaseEgg"})
     ClickRF   = getRemote({"Packages","Knit","Services","ArmWrestleService","RF","RequestClick"})
     CritRF    = getRemote({"Packages","Knit","Services","ArmWrestleService","RF","RequestCritHit"})
@@ -377,7 +489,7 @@ local function checkRemotes(featureName)
     if not remotesReady then
         Rayfield:Notify({
             Title    = "Not Ready",
-            Content  = featureName .. " — remotes are still loading, try again in a moment.",
+            Content  = featureName .. " — remotes still loading, try again in a moment.",
             Duration = 3,
             Image    = 4483362458,
         })
@@ -387,77 +499,119 @@ local function checkRemotes(featureName)
 end
 
 -- ================================================
--- CLEANUP: DISABLE NON-CORE SCRIPTS
--- Only disables cosmetic/animation Shiners, nothing that affects gameplay UI
+-- PERFORMANCE: LIGHTING EFFECTS
 -- ================================================
-task.spawn(function()
-    LocalPlayer:WaitForChild("PlayerGui")
-    LocalPlayer:WaitForChild("PlayerScripts")
+local savedLightingProps = {}
 
-    -- Safe list: only purely cosmetic scripts that won't affect UI interaction
-    local toDisable = {
-        "PlayerGui.GameUI.Left.Buttons.Store.Frame.Shiner",
-        "PlayerGui.GameUI.Menus.Store.Content.Limited.Lower Egg.Frame.Shiner",
-        "PlayerGui.GameUI.Menus.Store.Content.Limited.Upper Egg.Frame.Shiner",
-        "PlayerGui.GameUI.Menus.Store.Content.EndlessBundle.List.ScrollingFrame.2.Button.Frame.Shiner",
-        "PlayerGui.GameUI.Menus.SeasonPass.Frames.Premium.BuyPremium.Frame.Shiner",
-        "PlayerGui.GameUI.Menus.SeasonPass.Frames.Premium.BuyNormal.Frame.Shiner",
-        "PlayerScripts.Gui.Effects.ButtonAnimations",
-        "PlayerScripts.Gui.Effects.ConstantRotate",
-        "PlayerScripts.Gui.Effects.ConstantShake",
-        "PlayerScripts.Gui.Effects.RotateGradient",
-        "PlayerScripts.Gui.Effects.ConstantTexture",
-        "PlayerScripts.Gui.Effects.ColorCycle",
-        "PlayerScripts.Gui.Effects.Halloween",
-        "PlayerScripts.Gui.Main.InviteFriends",
-        "PlayerScripts.Gui.Main.Welcome",
-        "PlayerScripts.Gui.Main.WelcomePack",
-        "PlayerScripts.Gui.Main.StarterPack",
-        "PlayerScripts.Gui.Main.Guide",
-        "PlayerScripts.Gui.Main.UpdateLog",
-        "PlayerScripts.Gui.Main.Gifts",
-    }
+local DISABLE_LIGHTING_CLASSES = {
+    BloomEffect           = true,
+    DepthOfFieldEffect    = true,
+    BlurEffect            = true,
+    ColorGradingEffect    = true,
+    ColorCorrectionEffect = true,
+    Atmosphere            = true,
+}
 
-    for _, path in ipairs(toDisable) do
+local function disableLightingEffects()
+    for _, obj in ipairs(Lighting:GetDescendants()) do
+        if DISABLE_LIGHTING_CLASSES[obj.ClassName] and savedLightingProps[obj] == nil then
+            local ok, enabled = pcall(function() return obj.Enabled end)
+            if ok then
+                savedLightingProps[obj] = enabled
+                pcall(function() obj.Enabled = false end)
+            end
+        end
+    end
+end
+
+local function enableLightingEffects()
+    for obj, wasEnabled in pairs(savedLightingProps) do
+        if typeof(obj) == "Instance" and obj.Parent then
+            pcall(function() obj.Enabled = wasEnabled end)
+        end
+    end
+    savedLightingProps = {}
+end
+
+-- ================================================
+-- PERFORMANCE: SCRIPT MANAGEMENT
+-- ================================================
+local PERF_SCRIPT_PATHS = {
+    "PlayerGui.GameUI.Left.Buttons.Store.Frame.Shiner",
+    "PlayerGui.GameUI.Menus.Store.Content.Limited.Lower Egg.Frame.Shiner",
+    "PlayerGui.GameUI.Menus.Store.Content.Limited.Upper Egg.Frame.Shiner",
+    "PlayerGui.GameUI.Menus.Store.Content.EndlessBundle.List.ScrollingFrame.2.Button.Frame.Shiner",
+    "PlayerGui.GameUI.Menus.SeasonPass.Frames.Premium.BuyPremium.Frame.Shiner",
+    "PlayerGui.GameUI.Menus.SeasonPass.Frames.Premium.BuyNormal.Frame.Shiner",
+    "PlayerScripts.Gui.Effects.ButtonAnimations",
+    "PlayerScripts.Gui.Effects.ConstantRotate",
+    "PlayerScripts.Gui.Effects.ConstantShake",
+    "PlayerScripts.Gui.Effects.RotateGradient",
+    "PlayerScripts.Gui.Effects.ConstantTexture",
+    "PlayerScripts.Gui.Effects.ColorCycle",
+    "PlayerScripts.Gui.Effects.Halloween",
+    "PlayerScripts.Gui.Handling.UIStroke",
+    "PlayerScripts.Gui.Main.InviteFriends",
+    "PlayerScripts.Gui.Main.Welcome",
+    "PlayerScripts.Gui.Main.WelcomePack",
+    "PlayerScripts.Gui.Main.StarterPack",
+    "PlayerScripts.Gui.Main.Guide",
+    "PlayerScripts.Gui.Main.UpdateLog",
+    "PlayerScripts.Gui.Main.Gifts",
+}
+
+local shinerConnection = nil
+
+local function disablePerfScripts()
+    for _, path in ipairs(PERF_SCRIPT_PATHS) do
         local parts = string.split(path, ".")
         local ok, obj = pcall(function()
             local node = LocalPlayer
             for _, p in ipairs(parts) do node = node[p] end
             return node
         end)
-        if ok and obj and obj:IsA("LocalScript") then
-            obj.Enabled = false
-        end
+        if ok and obj and obj:IsA("LocalScript") then obj.Enabled = false end
     end
-
-    -- Only disable Shiners inside the Store menu, NOT inside Inventory/Pets/AutoTrain
-    local storeFolder = LocalPlayer.PlayerGui
-        :FindFirstChild("GameUI")
+    local storeFolder = LocalPlayer.PlayerGui:FindFirstChild("GameUI")
         and LocalPlayer.PlayerGui.GameUI:FindFirstChild("Menus")
         and LocalPlayer.PlayerGui.GameUI.Menus:FindFirstChild("Store")
-
     if storeFolder then
         local function disableShiner(inst)
-            if inst:IsA("LocalScript") and inst.Name == "Shiner" then
-                inst.Enabled = false
-            end
+            if inst:IsA("LocalScript") and inst.Name == "Shiner" then inst.Enabled = false end
         end
         for _, desc in ipairs(storeFolder:GetDescendants()) do disableShiner(desc) end
-        storeFolder.DescendantAdded:Connect(disableShiner)
+        shinerConnection = storeFolder.DescendantAdded:Connect(disableShiner)
     end
-end)
+end
+
+local function enablePerfScripts()
+    if shinerConnection then shinerConnection:Disconnect(); shinerConnection = nil end
+    for _, path in ipairs(PERF_SCRIPT_PATHS) do
+        local parts = string.split(path, ".")
+        local ok, obj = pcall(function()
+            local node = LocalPlayer
+            for _, p in ipairs(parts) do node = node[p] end
+            return node
+        end)
+        if ok and obj and obj:IsA("LocalScript") then obj.Enabled = true end
+    end
+    local storeFolder = LocalPlayer.PlayerGui:FindFirstChild("GameUI")
+        and LocalPlayer.PlayerGui.GameUI:FindFirstChild("Menus")
+        and LocalPlayer.PlayerGui.GameUI.Menus:FindFirstChild("Store")
+    if storeFolder then
+        for _, desc in ipairs(storeFolder:GetDescendants()) do
+            if desc:IsA("LocalScript") and desc.Name == "Shiner" then desc.Enabled = true end
+        end
+    end
+end
 
 -- ================================================
--- MAP HIDE TOGGLE
+-- MAP HIDE
 -- ================================================
 local savedMapProps     = {}
 local mapPlatform       = nil
 local mapHideConnection = nil
-
-local IGNORED_FOLDERS = {
-    ["GameObjects"] = true,
-    ["Terrain"]     = true,
-}
+local IGNORED_FOLDERS   = { ["GameObjects"] = true, ["Terrain"] = true }
 
 local function hidePart(obj, char)
     if not obj:IsA("BasePart") or obj.Name == "MRCPlatform" then return end
@@ -465,13 +619,9 @@ local function hidePart(obj, char)
     while topParent.Parent and topParent.Parent ~= workspace do
         topParent = topParent.Parent
     end
-    local skip = IGNORED_FOLDERS[topParent.Name] or (char and obj:IsDescendantOf(char))
-    if not skip and not savedMapProps[obj] then
-        savedMapProps[obj] = {
-            Transparency = obj.Transparency,
-            CanCollide   = obj.CanCollide,
-            CastShadow   = obj.CastShadow,
-        }
+    if IGNORED_FOLDERS[topParent.Name] or (char and obj:IsDescendantOf(char)) then return end
+    if not savedMapProps[obj] then
+        savedMapProps[obj] = { Transparency = obj.Transparency, CanCollide = obj.CanCollide, CastShadow = obj.CastShadow }
         obj.Transparency = 1
         obj.CanCollide   = false
         obj.CastShadow   = false
@@ -481,10 +631,9 @@ end
 local function hideMap()
     local char = LocalPlayer.Character
     if not char then return end
-
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if hrp then
-        mapPlatform = Instance.new("Part")
+        mapPlatform              = Instance.new("Part")
         mapPlatform.Name         = "MRCPlatform"
         mapPlatform.Size         = Vector3.new(50, 1, 50)
         mapPlatform.Position     = Vector3.new(hrp.Position.X, hrp.Position.Y - 5, hrp.Position.Z)
@@ -497,20 +646,14 @@ local function hideMap()
         mapPlatform.Parent       = workspace
         hrp.CFrame = CFrame.new(hrp.Position.X, mapPlatform.Position.Y + 5, hrp.Position.Z)
     end
-
     local descendants = workspace:GetDescendants()
-    local chunkSize   = 200
     task.spawn(function()
-        for i = 1, #descendants, chunkSize do
-            for j = i, math.min(i + chunkSize - 1, #descendants) do
-                hidePart(descendants[j], char)
-            end
+        for i = 1, #descendants, 200 do
+            for j = i, math.min(i + 199, #descendants) do hidePart(descendants[j], char) end
             task.wait()
         end
     end)
-
     workspace.Terrain.WaterTransparency = 1
-
     mapHideConnection = workspace.DescendantAdded:Connect(function(obj)
         task.wait()
         hidePart(obj, LocalPlayer.Character)
@@ -518,11 +661,7 @@ local function hideMap()
 end
 
 local function showMap()
-    if mapHideConnection then
-        mapHideConnection:Disconnect()
-        mapHideConnection = nil
-    end
-
+    if mapHideConnection then mapHideConnection:Disconnect(); mapHideConnection = nil end
     for obj, props in pairs(savedMapProps) do
         if obj and obj.Parent then
             obj.Transparency = props.Transparency
@@ -531,13 +670,196 @@ local function showMap()
         end
     end
     savedMapProps = {}
+    if mapPlatform then mapPlatform:Destroy(); mapPlatform = nil end
+    workspace.Terrain.WaterTransparency = 0.3
+end
 
-    if mapPlatform then
-        mapPlatform:Destroy()
-        mapPlatform = nil
+-- ================================================
+-- HIDE SCREEN (MAX PERFORMANCE MODE)
+-- Suppresses: ScreenGuis, NPC Animate scripts,
+--             Particles, Beams, Sounds, Lighting FX
+--             + moves camera to void
+-- ================================================
+
+
+local MRC_LOGO_ASSET_ID = "rbxassetid://100235177115292"
+
+local PROTECTED_GUIS = {
+    MRCBlackOverlay = true,
+    MRCStatsOverlay = true,
+    RayfieldUI      = true,  -- adjust if Rayfield names its ScreenGui differently
+}
+
+local blackOverlayGui    = nil
+local savedCamCFrame     = nil
+local savedCamType       = nil
+local savedGuiStates     = {}
+local savedScriptStates  = {}
+local savedParticleStates= {}
+local savedSoundStates   = {}
+
+local function hideScreen()
+    local pg = LocalPlayer:WaitForChild("PlayerGui")
+
+    -- 1. BLACK OVERLAY
+    blackOverlayGui = Instance.new("ScreenGui")
+    blackOverlayGui.Name         = "MRCBlackOverlay"
+    blackOverlayGui.ResetOnSpawn = false
+    blackOverlayGui.DisplayOrder = 9999
+    blackOverlayGui.Parent       = pg
+
+    local frame = Instance.new("Frame")
+    frame.Size                   = UDim2.new(1, 0, 1, 0)
+    frame.BackgroundColor3       = Color3.new(0, 0, 0)
+    frame.BackgroundTransparency = 0
+    frame.BorderSizePixel        = 0
+    frame.Parent                 = blackOverlayGui
+
+    -- MRC logo (static PNG, small, centred — minimal texture overhead)
+    local logo = Instance.new("ImageLabel")
+    logo.Size                   = UDim2.new(0, 110, 0, 110)
+    logo.Position               = UDim2.new(0.5, -55, 0.5, -75)
+    logo.BackgroundTransparency = 1
+    logo.Image                  = MRC_LOGO_ASSET_ID
+    logo.ScaleType              = Enum.ScaleType.Fit
+    logo.Parent                 = blackOverlayGui
+
+    -- Status label below logo
+    local lbl = Instance.new("TextLabel")
+    lbl.Size                   = UDim2.new(1, 0, 0, 24)
+    lbl.Position               = UDim2.new(0, 0, 0.5, 45)
+    lbl.BackgroundTransparency = 1
+    lbl.Text                   = "⚡ Screen Hidden — toggle off to restore"
+    lbl.TextColor3             = Color3.fromRGB(110, 70, 210)
+    lbl.Font                   = Enum.Font.GothamBold
+    lbl.TextSize               = 12
+    lbl.Parent                 = blackOverlayGui
+
+    -- 2. DISABLE ALL SCREENGUIS (except MRC's own)
+    savedGuiStates = {}
+    for _, gui in ipairs(pg:GetChildren()) do
+        if gui:IsA("ScreenGui") and not PROTECTED_GUIS[gui.Name] then
+            savedGuiStates[gui] = gui.Enabled
+            gui.Enabled = false
+        end
     end
 
-    workspace.Terrain.WaterTransparency = 0
+    -- 3. DISABLE NPC ANIMATE / IDLE / WAVE SCRIPTS in workspace
+    savedScriptStates = {}
+    local char = LocalPlayer.Character
+    task.spawn(function()
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if (obj:IsA("LocalScript") or obj:IsA("Script"))
+                and (obj.Name == "Animate" or obj.Name == "IdleScript" or obj.Name == "WaveScript")
+                and not (char and obj:IsDescendantOf(char))
+            then
+                savedScriptStates[obj] = obj.Enabled
+                pcall(function() obj.Enabled = false end)
+            end
+        end
+    end)
+
+    -- 4. DISABLE PARTICLES, BEAMS, TRAILS in workspace
+    savedParticleStates = {}
+    task.spawn(function()
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("ParticleEmitter") or obj:IsA("Beam") or obj:IsA("Trail") then
+                savedParticleStates[obj] = obj.Enabled
+                pcall(function() obj.Enabled = false end)
+            end
+        end
+    end)
+
+    -- 5. MUTE ALL SOUNDS in workspace
+    savedSoundStates = {}
+    task.spawn(function()
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Sound") then
+                savedSoundStates[obj] = obj.Volume
+                pcall(function() obj.Volume = 0 end)
+            end
+        end
+    end)
+
+    -- 6. CAMERA TO VOID (stops world render entirely)
+    local cam = workspace.CurrentCamera
+    savedCamType   = cam.CameraType
+    savedCamCFrame = cam.CFrame
+    cam.CameraType = Enum.CameraType.Scriptable
+    cam.CFrame     = CFrame.new(0, -100000, 0)
+
+    -- 7. ALL LIGHTING FX (full pass, catches nested folders)
+    task.spawn(function()
+        for _, obj in ipairs(Lighting:GetDescendants()) do
+            local cn = obj.ClassName
+            if cn == "BloomEffect" or cn == "DepthOfFieldEffect"
+                or cn == "BlurEffect" or cn == "ColorCorrectionEffect"
+                or cn == "ColorGradingEffect" or cn == "Atmosphere"
+            then
+                if savedLightingProps[obj] == nil then
+                    local ok, en = pcall(function() return obj.Enabled end)
+                    if ok then
+                        savedLightingProps[obj] = en
+                        pcall(function() obj.Enabled = false end)
+                    end
+                end
+            end
+        end
+    end)
+end
+
+local function showScreen()
+    -- Remove overlay
+    if blackOverlayGui then
+        blackOverlayGui:Destroy()
+        blackOverlayGui = nil
+    end
+
+    -- Restore ScreenGuis
+    for gui, wasEnabled in pairs(savedGuiStates) do
+        if gui and gui.Parent then
+            pcall(function() gui.Enabled = wasEnabled end)
+        end
+    end
+    savedGuiStates = {}
+
+    -- Restore NPC scripts
+    for scr, wasEnabled in pairs(savedScriptStates) do
+        if scr and scr.Parent then
+            pcall(function() scr.Enabled = wasEnabled end)
+        end
+    end
+    savedScriptStates = {}
+
+    -- Restore particles/beams/trails
+    for obj, wasEnabled in pairs(savedParticleStates) do
+        if obj and obj.Parent then
+            pcall(function() obj.Enabled = wasEnabled end)
+        end
+    end
+    savedParticleStates = {}
+
+    -- Restore sounds
+    for obj, vol in pairs(savedSoundStates) do
+        if obj and obj.Parent then
+            pcall(function() obj.Volume = vol end)
+        end
+    end
+    savedSoundStates = {}
+
+    -- Restore camera
+    local cam = workspace.CurrentCamera
+    if savedCamType then
+        cam.CameraType = savedCamType
+        savedCamType   = nil
+    end
+    if savedCamCFrame then
+        cam.CFrame     = savedCamCFrame
+        savedCamCFrame = nil
+    end
+
+    -- Restore lighting (reuses existing table + function)
+    enableLightingEffects()
 end
 
 -- ================================================
@@ -553,6 +875,7 @@ local function collectCarrot(carrot)
         pcall(function() RF:InvokeServer(zone, guid) end)
         Stats.carrots += 1
         updateStatLabel("carrots")
+        checkMilestone("carrots", Stats.carrots)
         carrot:Destroy()
     end
 end
@@ -574,15 +897,6 @@ local function stopCollecting()
     end
 end
 
-local function getOwnedPets()
-    if not PetRF then return {} end
-    local ok, pets = pcall(function()
-        return PetRF:InvokeServer(LocalPlayer)
-    end)
-    if ok and type(pets) == "table" then return pets end
-    return {}
-end
-
 -- ================================================
 -- DYNAMIC HATCH COUNT
 -- ================================================
@@ -596,54 +910,71 @@ local function getHatchCount()
             end
         end
     end)
-    if ok and type(result) == "number" and result > 1 then
-        return result
-    end
-    return 1
+    return (ok and type(result) == "number" and result > 1) and result or 1
 end
 
 -- ================================================
--- AUTO HATCH
+-- AUTO HATCH (NORMAL)
 -- ================================================
 local function startHatching()
     while State.hatching do
         if EggRF then
-            local beforePets = getOwnedPets()
-
+            local count  = getHatchCount()
+            local isBulk = count > 1
             local ok, result = pcall(function()
-                return EggRF:InvokeServer("Bunny", nil, nil, true, true, true, nil)
+                if isBulk then
+                    return EggRF:InvokeServer("Bunny", nil, nil, true, true, true, nil)
+                else
+                    return EggRF:InvokeServer("Bunny", nil, nil, false, nil, nil, nil)
+                end
             end)
             if ok and result then
-                Stats.eggs += getHatchCount()
+                Stats.eggs += count
                 updateStatLabel("eggs")
-            end
-
-            task.wait(0.3)
-            local afterPets = getOwnedPets()
-            for uuid, data in pairs(afterPets) do
-                if not beforePets[uuid] then
-                    local petName = data and (data.Name or data.PetName or data.Type or data.Id)
-                    if petName and RARE_PETS[petName] then
-                        sendRareWebhook(tostring(petName))
-                        Rayfield:Notify({
-                            Title    = "🌟 RARE PET!",
-                            Content  = "You hatched a " .. tostring(petName) .. "!",
-                            Duration = 10,
-                            Image    = 4483362458,
-                        })
-                    end
-                end
+                checkMilestone("eggs", Stats.eggs)
             end
         end
         task.wait(0.15 + math.random(0, 5) / 100)
     end
 end
 
+-- ================================================
+-- AUTO HATCH EVENT EGG
+-- ================================================
+local selectedEventHatchType = "1x"
+
+local function startHatchingEvent()
+    while State.hatchingEvent do
+        if EggRF then
+            local count
+            local ok, result = pcall(function()
+                if selectedEventHatchType == "1x" then
+                    count = 1
+                    return EggRF:InvokeServer("Bunny", {}, false)
+                elseif selectedEventHatchType == "3x" then
+                    count = 3
+                    return EggRF:InvokeServer("Bunny", {}, true, false)
+                else
+                    count = 8
+                    return EggRF:InvokeServer("Bunny", {}, false, true)
+                end
+            end)
+            if ok and result then
+                Stats.eggs += count
+                updateStatLabel("eggs")
+                checkMilestone("eggs", Stats.eggs)
+            end
+        end
+        task.wait(0.15 + math.random(0, 5) / 100)
+    end
+end
+
+-- ================================================
+-- OTHER FEATURES
+-- ================================================
 local function mutateBatch()
     if not PetRF or not MutateRF then return end
-    local success, pets = pcall(function()
-        return PetRF:InvokeServer(LocalPlayer)
-    end)
+    local success, pets = pcall(function() return PetRF:InvokeServer(LocalPlayer) end)
     if not success or typeof(pets) ~= "table" then return end
     for uuid, data in pairs(pets) do
         if not State.mutating then break end
@@ -651,16 +982,14 @@ local function mutateBatch()
             pcall(function() MutateRF:InvokeServer(uuid, {}) end)
             Stats.mutations += 1
             updateStatLabel("mutations")
+            checkMilestone("mutations", Stats.mutations)
             task.wait(math.random(40, 70) / 100)
         end
     end
 end
 
 local function startAutoMutate()
-    while State.mutating do
-        mutateBatch()
-        task.wait(2)
-    end
+    while State.mutating do mutateBatch(); task.wait(2) end
 end
 
 local function startAutoUpgrade()
@@ -694,22 +1023,19 @@ end
 
 local function startAutoAscend()
     while State.ascending do
-        if AscendRF then
-            pcall(function() AscendRF:InvokeServer("BunnyBurrow") end)
-        end
+        if AscendRF then pcall(function() AscendRF:InvokeServer("BunnyBurrow") end) end
         task.wait(math.random(3, 5))
     end
 end
 
 local function startAutoRune()
-    while State.runing do
+    while State.running do
         if RuneRF then
-            local ok, result = pcall(function()
-                return RuneRF:InvokeServer("BunnyBurrow")
-            end)
+            local ok, result = pcall(function() return RuneRF:InvokeServer("BunnyBurrow") end)
             if ok and result then
                 Stats.runes += 1
                 updateStatLabel("runes")
+                checkMilestone("runes", Stats.runes)
             end
         end
         task.wait(0.3 + math.random(10, 20) / 100)
@@ -717,8 +1043,29 @@ local function startAutoRune()
 end
 
 -- ================================================
--- UI
+-- UI — MAIN TAB
 -- ================================================
+
+MainTab:CreateButton({
+    Name     = "💬 Join Discord Server",
+    Callback = function()
+        pcall(function()
+            if syn and syn.open_url then
+                syn.open_url("https://discord.gg/YV3GjGw3PY")
+            elseif typeof(openurl) == "function" then
+                openurl("https://discord.gg/YV3GjGw3PY")
+            else
+                setclipboard("https://discord.gg/YV3GjGw3PY")
+            end
+        end)
+        Rayfield:Notify({
+            Title    = "Discord",
+            Content  = "discord.gg/YV3GjGw3PY — opening or copied to clipboard!",
+            Duration = 5,
+            Image    = 4483362458,
+        })
+    end,
+})
 
 MainTab:CreateToggle({
     Name         = "Auto Fight Boss",
@@ -733,24 +1080,28 @@ MainTab:CreateToggle({
 })
 
 MainTab:CreateToggle({
-    Name         = "Hide Map (Performance)",
+    Name         = "Hide Map + Performance Mode",
     CurrentValue = false,
     Flag         = "HideMap",
     Callback     = function(v)
         State.mapHidden = v
         if v then
             hideMap()
+            disablePerfScripts()
+            disableLightingEffects()
             Rayfield:Notify({
-                Title    = "Map Hidden",
-                Content  = "World geometry hidden. Carrots and character unaffected.",
+                Title    = "Performance Mode ON",
+                Content  = "Map hidden, UI scripts & lighting effects disabled.",
                 Duration = 4,
                 Image    = 4483362458,
             })
         else
             showMap()
+            enablePerfScripts()
+            enableLightingEffects()
             Rayfield:Notify({
-                Title    = "Map Restored",
-                Content  = "World geometry restored.",
+                Title    = "Performance Mode OFF",
+                Content  = "Map and all effects restored.",
                 Duration = 3,
                 Image    = 4483362458,
             })
@@ -758,6 +1109,35 @@ MainTab:CreateToggle({
     end,
 })
 
+MainTab:CreateToggle({
+    Name         = "Hide Screen (Max GPU Savings)",
+    CurrentValue = false,
+    Flag         = "HideScreen",
+    Callback     = function(v)
+        State.screenHidden = v
+        if v then
+            hideScreen()
+            Rayfield:Notify({
+                Title    = "Screen Hidden",
+                Content  = "Camera voided, UI + NPCs + particles + sounds suppressed.",
+                Duration = 4,
+                Image    = 4483362458,
+            })
+        else
+            showScreen()
+            Rayfield:Notify({
+                Title    = "Screen Restored",
+                Content  = "Everything brought back.",
+                Duration = 3,
+                Image    = 4483362458,
+            })
+        end
+    end,
+})
+
+-- ================================================
+-- UI — EVENT TAB
+-- ================================================
 EventTab:CreateToggle({
     Name         = "Auto Collect Carrots",
     CurrentValue = false,
@@ -784,6 +1164,37 @@ EventTab:CreateToggle({
         if v and not checkRemotes("Auto Hatch") then return end
         State.hatching = v
         if v then task.spawn(startHatching) end
+    end,
+})
+
+EventTab:CreateDropdown({
+    Name          = "Event Hatch Amount",
+    Options       = {"1x", "3x+", "8x+"},
+    CurrentOption = {"1x"},
+    Flag          = "EventHatchType",
+    Callback      = function(v) selectedEventHatchType = v[1] end,
+})
+
+EventTab:CreateToggle({
+    Name         = "Auto Hatch Event Egg (Bunny)",
+    CurrentValue = false,
+    Flag         = "AutoHatchEvent",
+    Callback     = function(v)
+        if v and not checkRemotes("Auto Hatch Event Egg") then return end
+        State.hatchingEvent = v
+        if v then
+            cancelStatsRemoval()
+            createStatsUI()
+            task.spawn(startHatchingEvent)
+            Rayfield:Notify({
+                Title    = "Auto Hatch Event",
+                Content  = "Hatching Bunny eggs — " .. selectedEventHatchType .. " per cycle.",
+                Duration = 4,
+                Image    = 4483362458,
+            })
+        else
+            scheduleStatsRemoval()
+        end
     end,
 })
 
@@ -815,7 +1226,7 @@ EventTab:CreateToggle({
     Flag         = "AutoRune",
     Callback     = function(v)
         if v and not checkRemotes("Auto Rune") then return end
-        State.runing = v
+        State.running = v
         if v then
             task.spawn(startAutoRune)
             Rayfield:Notify({
@@ -828,6 +1239,9 @@ EventTab:CreateToggle({
     end,
 })
 
+-- ================================================
+-- UI — MUTATE TAB
+-- ================================================
 MutateTab:CreateToggle({
     Name         = "Auto Mutate All Pets",
     CurrentValue = false,
