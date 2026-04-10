@@ -1,3 +1,16 @@
+-- ================================================
+-- RE-EXECUTION GUARD
+-- ================================================
+if _G.MRCHubLoaded then
+    print("[MRC Hub] Already loaded — cleaning up previous instance...")
+    _G.MRCHubLoaded = false
+    if _G.MRCHubCleanup then
+        pcall(_G.MRCHubCleanup)
+    end
+    task.wait(0.5)
+end
+_G.MRCHubLoaded = true
+
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
@@ -9,19 +22,19 @@ local Window = Rayfield:CreateWindow({
 
 task.wait(2)
 
--- ================================================
--- DISCORD PROMO — STARTUP NOTIFICATION
--- ================================================
 Rayfield:Notify({
     Title    = "💬 Join Our Discord!",
-    Content  = "Get updates, report bugs & chat: discord.gg/YV3GjGw3PY",
+    Content  = "discord.gg/YV3GjGw3PY — get updates, report bugs & chat",
     Duration = 8,
     Image    = 4483362458,
 })
 
-local MainTab   = Window:CreateTab("Main",   4483362458)
-local EventTab  = Window:CreateTab("Event",  4483362458)
-local MutateTab = Window:CreateTab("Mutate", 4483362458)
+local MainTab   = Window:CreateTab("Main",      4483362458)
+local EventTab  = Window:CreateTab("Event",     4483362458)
+local MutateTab = Window:CreateTab("Mutate",    4483362458)
+local PetsTab   = Window:CreateTab("Pets",      4483362458)
+local MiscTab   = Window:CreateTab("Misc",      4483362458)
+local PremiumTab = Window:CreateTab("⭐ PREMIUM", 4483362458)
 
 -- ================================================
 -- SERVICES
@@ -58,12 +71,22 @@ local State = {
     running       = false,
     mapHidden     = false,
     screenHidden  = false,
+    rebirthing    = false,
+    claimFree     = false,
+    claimDaily    = false,
+    autoSpin      = false,
+    lockPets      = false,
+    unlockPets    = false,
+    deletePets    = false,
+    craftPets     = false,
+    farmTools     = false,
 }
+
 local connection   = nil
 local remotesReady = false
 
 -- ================================================
--- STATS
+-- STATS + SESSION TIMER
 -- ================================================
 local Stats = {
     carrots   = 0,
@@ -72,6 +95,49 @@ local Stats = {
     clicks    = 0,
     runes     = 0,
 }
+
+local sessionStart = os.time()
+
+local function getElapsedHours()
+    local secs = os.time() - sessionStart
+    return math.max(secs / 3600, 1 / 3600)
+end
+
+local function getRate(value)
+    local hrs = getElapsedHours()
+    local rate = math.floor(value / hrs)
+    if rate >= 1000 then
+        return string.format("%.1fk/hr", rate / 1000)
+    end
+    return rate .. "/hr"
+end
+
+local function formatElapsed()
+    local secs = os.time() - sessionStart
+    local h = math.floor(secs / 3600)
+    local m = math.floor((secs % 3600) / 60)
+    local s = secs % 60
+    if h > 0 then
+        return string.format("%dh %02dm %02ds", h, m, s)
+    end
+    return string.format("%dm %02ds", m, s)
+end
+
+-- ================================================
+-- NOTIFICATION COOLDOWN
+-- ================================================
+local notifyCooldowns = {}
+local NOTIFY_COOLDOWN = 6
+
+local function safeNotify(data)
+    local key = data.Title or "default"
+    local now = os.clock()
+    if notifyCooldowns[key] and (now - notifyCooldowns[key]) < NOTIFY_COOLDOWN then
+        return
+    end
+    notifyCooldowns[key] = now
+    Rayfield:Notify(data)
+end
 
 -- ================================================
 -- MILESTONES
@@ -96,9 +162,9 @@ local function checkMilestone(key, value)
     for _, threshold in ipairs(list) do
         if value >= threshold and not MilestonesHit[key][threshold] then
             MilestonesHit[key][threshold] = true
-            Rayfield:Notify({
+            safeNotify({
                 Title    = milestoneIcons[key] .. " Milestone Hit!",
-                Content  = threshold .. " " .. key .. " reached! Share the hub: discord.gg/YV3GjGw3PY",
+                Content  = threshold .. " " .. key .. " reached! discord.gg/YV3GjGw3PY",
                 Duration = 6,
                 Image    = 4483362458,
             })
@@ -111,12 +177,6 @@ end
 -- ================================================
 local WEBHOOK_URL      = "https://discord.com/api/webhooks/1490484527691464825/RlFEYNA4vtlb-yNrrMHHVmMks5dJKocU28F8tulLOKxxHdrViMqqJNdDNCqWO4BJDNcn"
 local RARE_WEBHOOK_URL = "https://discord.com/api/webhooks/1490492113123807363/CYpjs3tmrjrOBMienU8lq4sVI5m8_fEt90neYNiF_HrRtTiw-wiYY7-hWZwhzj4gX-Si"
-
-local RARE_PETS = {
-    ["Giga Egg Fox"]         = true,
-    ["Mega Easter Goat"]     = true,
-    ["Olympic Blade Carrot"] = true,
-}
 
 local function sendWebhook(title, description, color)
     task.spawn(function()
@@ -139,7 +199,7 @@ local function sendWebhook(title, description, color)
     end)
 end
 
-local function sendRareWebhook(petName)
+local function sendRareWebhook(petName, rawText)
     task.spawn(function()
         pcall(function()
             local req = (syn and syn.request) or (http and http.request) or request
@@ -149,10 +209,10 @@ local function sendRareWebhook(petName)
                 Headers = { ["Content-Type"] = "application/json" },
                 Body    = HttpService:JSONEncode({
                     embeds = {{
-                        title       = "🌟 Rare Pet Hatched!",
-                        description = "**User:** " .. LocalPlayer.Name ..
-                                      "\n**Pet:** " .. petName ..
-                                      "\n**Eggs Hatched This Session:** " .. Stats.eggs,
+                        title       = "🌟 Rare Pet Seen in Global Chat!",
+                        description = "**Pet:** " .. petName ..
+                                      "\n**Raw Announcement:** " .. (rawText or "N/A") ..
+                                      "\n**Session Eggs Hatched:** " .. Stats.eggs,
                         color       = 16766720,
                         footer      = { text = "MRC'S AWS HUB • discord.gg/YV3GjGw3PY" },
                     }}
@@ -173,14 +233,16 @@ local function logExecution()
 end
 
 local function logSessionSummary()
+    local elapsed = formatElapsed()
     sendWebhook(
         "📊 Session Summary",
         "**User:** " .. LocalPlayer.Name ..
-        "\n🥕 Carrots Collected: **" .. Stats.carrots .. "**" ..
-        "\n🥚 Eggs Hatched: **" .. Stats.eggs .. "**" ..
-        "\n✨ Pets Mutated: **" .. Stats.mutations .. "**" ..
+        "\n**Session Duration:** " .. elapsed ..
+        "\n🥕 Carrots: **" .. Stats.carrots .. "** (" .. getRate(Stats.carrots) .. ")" ..
+        "\n🥚 Eggs: **" .. Stats.eggs .. "** (" .. getRate(Stats.eggs) .. ")" ..
+        "\n✨ Mutations: **" .. Stats.mutations .. "**" ..
         "\n👊 Boss Clicks: **" .. Stats.clicks .. "**" ..
-        "\n🔮 Runes Rolled: **" .. Stats.runes .. "**",
+        "\n🔮 Runes: **" .. Stats.runes .. "**",
         3066993
     )
 end
@@ -202,7 +264,7 @@ task.delay(90, function()
             setclipboard("https://discord.gg/YV3GjGw3PY")
         end
     end)
-    Rayfield:Notify({
+    safeNotify({
         Title    = "Join Our Discord!",
         Content  = "discord.gg/YV3GjGw3PY — copied to clipboard if it didn't open!",
         Duration = 8,
@@ -211,54 +273,40 @@ task.delay(90, function()
 end)
 
 -- ================================================
--- RARE PET DETECTION VIA GLOBAL CHAT
+-- RARE PET DETECTION
 -- ================================================
+local RARE_PETS = {
+    "Giga Egg Fox",
+    "Mega Easter Goat",
+    "Olympic Blade Carrot",
+}
+
+local rareCooldowns = {}
+local RARE_COOLDOWN = 30
+
+local function stripRichText(str)
+    return str:gsub("<[^>]+>", "")
+end
+
 local function setupChatRareDetection()
     local ok = pcall(function()
         TextChatService.MessageReceived:Connect(function(msg)
-            local text = msg.Text or ""
-            if string.find(text, LocalPlayer.Name, 1, true) or string.find(text, LocalPlayer.DisplayName, 1, true) then
-                for petName in pairs(RARE_PETS) do
-                    if string.find(text, petName, 1, true) then
-                        sendRareWebhook(petName)
-                        Rayfield:Notify({
-                            Title    = "🌟 RARE PET!",
-                            Content  = "Chat detected: " .. petName,
-                            Duration = 10,
-                            Image    = 4483362458,
-                        })
-                        break
+            local raw = msg.Text or ""
+            local plain = stripRichText(raw)
+            for _, petName in ipairs(RARE_PETS) do
+                if string.find(plain, petName, 1, true) then
+                    local now = os.clock()
+                    if not rareCooldowns[petName] or (now - rareCooldowns[petName]) > RARE_COOLDOWN then
+                        rareCooldowns[petName] = now
+                        sendRareWebhook(petName, plain:sub(1, 120))
                     end
+                    break
                 end
             end
         end)
     end)
     if not ok then
-        pcall(function()
-            local chatGui   = LocalPlayer:WaitForChild("PlayerGui"):WaitForChild("Chat", 10)
-            local chatFrame = chatGui and chatGui:FindFirstChildWhichIsA("Frame", true)
-            if chatFrame then
-                chatFrame.DescendantAdded:Connect(function(obj)
-                    if obj:IsA("TextLabel") then
-                        local text = obj.Text or ""
-                        if string.find(text, LocalPlayer.Name, 1, true) or string.find(text, LocalPlayer.DisplayName, 1, true) then
-                            for petName in pairs(RARE_PETS) do
-                                if string.find(text, petName, 1, true) then
-                                    sendRareWebhook(petName)
-                                    Rayfield:Notify({
-                                        Title    = "🌟 RARE PET!",
-                                        Content  = "Chat detected: " .. petName,
-                                        Duration = 10,
-                                        Image    = 4483362458,
-                                    })
-                                    break
-                                end
-                            end
-                        end
-                    end
-                end)
-            end
-        end)
+        warn("[MRC Hub] TCS.MessageReceived hook failed — rare detection unavailable")
     end
 end
 task.spawn(setupChatRareDetection)
@@ -269,18 +317,23 @@ task.spawn(setupChatRareDetection)
 local statsGui      = nil
 local statsFrame    = nil
 local statLabels    = {}
+local timerLabel    = nil
 local hideCountdown = nil
+local statsPinned   = false
+local statsVisible  = false
+local statsUpdateConn = nil
 
 local statConfig = {
-    { key = "carrots",   icon = "🥕", label = "Carrots Collected" },
-    { key = "eggs",      icon = "🥚", label = "Eggs Hatched"      },
-    { key = "mutations", icon = "✨", label = "Pets Mutated"       },
-    { key = "clicks",    icon = "👊", label = "Boss Clicks"        },
-    { key = "runes",     icon = "🔮", label = "Runes Rolled"       },
+    { key = "carrots",   icon = "🥕", label = "Carrots",   showRate = true  },
+    { key = "eggs",      icon = "🥚", label = "Eggs",      showRate = true  },
+    { key = "mutations", icon = "✨", label = "Mutations",  showRate = false },
+    { key = "clicks",    icon = "👊", label = "Boss Hits",  showRate = false },
+    { key = "runes",     icon = "🔮", label = "Runes",     showRate = false },
 }
 
 local function createStatsUI()
     if statsGui then return end
+    statsVisible = true
     local playerGui = LocalPlayer:WaitForChild("PlayerGui")
 
     statsGui = Instance.new("ScreenGui")
@@ -291,19 +344,19 @@ local function createStatsUI()
 
     local container = Instance.new("Frame")
     container.Name                   = "Container"
-    container.Size                   = UDim2.new(0, 220, 0, 0)
-    container.AnchorPoint            = Vector2.new(0.5, 1)
+    container.Size                   = UDim2.new(0, 240, 0, 0)
+    container.AnchorPoint            = Vector2.new(1, 1)
     container.BackgroundColor3       = Color3.fromRGB(10, 10, 14)
     container.BackgroundTransparency = 1
     container.BorderSizePixel        = 0
     container.AutomaticSize          = Enum.AutomaticSize.Y
-    container.Position               = UDim2.new(0.5, -110, 1, 20)
+    container.Position               = UDim2.new(1, -12, 1, 20)
     container.Parent                 = statsGui
     statsFrame = container
 
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 12)
-    corner.Parent = container
+    corner.Parent       = container
 
     local stroke = Instance.new("UIStroke")
     stroke.Color        = Color3.fromRGB(90, 60, 200)
@@ -312,117 +365,209 @@ local function createStatsUI()
     stroke.Parent       = container
 
     local padding = Instance.new("UIPadding")
-    padding.PaddingTop    = UDim.new(0, 12)
-    padding.PaddingBottom = UDim.new(0, 12)
-    padding.PaddingLeft   = UDim.new(0, 14)
-    padding.PaddingRight  = UDim.new(0, 14)
+    padding.PaddingTop    = UDim.new(0, 10)
+    padding.PaddingBottom = UDim.new(0, 10)
+    padding.PaddingLeft   = UDim.new(0, 12)
+    padding.PaddingRight  = UDim.new(0, 12)
     padding.Parent        = container
 
     local layout = Instance.new("UIListLayout")
     layout.SortOrder           = Enum.SortOrder.LayoutOrder
-    layout.Padding             = UDim.new(0, 6)
+    layout.Padding             = UDim.new(0, 4)
     layout.FillDirection       = Enum.FillDirection.Vertical
     layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
     layout.Parent              = container
 
+    local headerRow = Instance.new("Frame")
+    headerRow.Size                   = UDim2.new(1, 0, 0, 20)
+    headerRow.BackgroundTransparency = 1
+    headerRow.BorderSizePixel        = 0
+    headerRow.LayoutOrder            = 0
+    headerRow.Parent                 = container
+
     local header = Instance.new("TextLabel")
-    header.Name                   = "Header"
-    header.Size                   = UDim2.new(1, 0, 0, 22)
+    header.Size                   = UDim2.new(0.7, 0, 1, 0)
     header.BackgroundTransparency = 1
-    header.Text                   = "⚡  MRC Hub — Session Stats"
+    header.Text                   = "⚡  MRC Hub — Stats"
     header.TextColor3             = Color3.fromRGB(200, 170, 255)
     header.Font                   = Enum.Font.GothamBold
     header.TextSize               = 11
     header.TextXAlignment         = Enum.TextXAlignment.Left
-    header.LayoutOrder            = 0
-    header.Parent                 = container
+    header.Parent                 = headerRow
+
+    local pinBtn = Instance.new("TextButton")
+    pinBtn.Size                   = UDim2.new(0, 36, 1, 0)
+    pinBtn.Position               = UDim2.new(1, -36, 0, 0)
+    pinBtn.BackgroundColor3       = Color3.fromRGB(40, 30, 70)
+    pinBtn.BackgroundTransparency = 0.3
+    pinBtn.Text                   = "📌"
+    pinBtn.TextSize               = 10
+    pinBtn.Font                   = Enum.Font.GothamBold
+    pinBtn.TextColor3             = Color3.fromRGB(180, 150, 255)
+    pinBtn.BorderSizePixel        = 0
+    pinBtn.Parent                 = headerRow
+
+    local pinCorner = Instance.new("UICorner")
+    pinCorner.CornerRadius = UDim.new(0, 6)
+    pinCorner.Parent       = pinBtn
+
+    pinBtn.MouseButton1Click:Connect(function()
+        statsPinned = not statsPinned
+        if statsPinned then
+            pinBtn.Text       = "📍"
+            pinBtn.TextColor3 = Color3.fromRGB(255, 200, 80)
+            if hideCountdown then task.cancel(hideCountdown); hideCountdown = nil end
+        else
+            pinBtn.Text       = "📌"
+            pinBtn.TextColor3 = Color3.fromRGB(180, 150, 255)
+        end
+    end)
+
+    local timerRow = Instance.new("Frame")
+    timerRow.Size                   = UDim2.new(1, 0, 0, 16)
+    timerRow.BackgroundTransparency = 1
+    timerRow.BorderSizePixel        = 0
+    timerRow.LayoutOrder            = 1
+    timerRow.Parent                 = container
+
+    timerLabel = Instance.new("TextLabel")
+    timerLabel.Size                   = UDim2.new(1, 0, 1, 0)
+    timerLabel.BackgroundTransparency = 1
+    timerLabel.Text                   = "⏱  Session: 0m 00s"
+    timerLabel.TextColor3             = Color3.fromRGB(140, 140, 170)
+    timerLabel.Font                   = Enum.Font.Gotham
+    timerLabel.TextSize               = 10
+    timerLabel.TextXAlignment         = Enum.TextXAlignment.Left
+    timerLabel.Parent                 = timerRow
 
     local divider = Instance.new("Frame")
     divider.Size                   = UDim2.new(1, 0, 0, 1)
     divider.BackgroundColor3       = Color3.fromRGB(90, 60, 200)
     divider.BackgroundTransparency = 0.5
     divider.BorderSizePixel        = 0
-    divider.LayoutOrder            = 1
+    divider.LayoutOrder            = 2
     divider.Parent                 = container
 
+    statLabels = {}
     for i, cfg in ipairs(statConfig) do
         local row = Instance.new("Frame")
         row.Name                   = cfg.key
-        row.Size                   = UDim2.new(1, 0, 0, 22)
+        row.Size                   = UDim2.new(1, 0, 0, 20)
         row.BackgroundTransparency = 1
         row.BorderSizePixel        = 0
-        row.LayoutOrder            = i + 1
+        row.LayoutOrder            = i + 2
         row.Parent                 = container
 
-        local iconLabel = Instance.new("TextLabel")
-        iconLabel.Size                   = UDim2.new(0, 20, 1, 0)
-        iconLabel.BackgroundTransparency = 1
-        iconLabel.Text                   = cfg.icon
-        iconLabel.TextSize               = 13
-        iconLabel.Font                   = Enum.Font.Gotham
-        iconLabel.TextXAlignment         = Enum.TextXAlignment.Left
-        iconLabel.Parent                 = row
+        local iconLbl = Instance.new("TextLabel")
+        iconLbl.Size                   = UDim2.new(0, 18, 1, 0)
+        iconLbl.BackgroundTransparency = 1
+        iconLbl.Text                   = cfg.icon
+        iconLbl.TextSize               = 12
+        iconLbl.Font                   = Enum.Font.Gotham
+        iconLbl.TextXAlignment         = Enum.TextXAlignment.Left
+        iconLbl.Parent                 = row
 
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Size                   = UDim2.new(0, 120, 1, 0)
-        nameLabel.Position               = UDim2.new(0, 24, 0, 0)
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.Text                   = cfg.label
-        nameLabel.TextColor3             = Color3.fromRGB(180, 180, 200)
-        nameLabel.Font                   = Enum.Font.Gotham
-        nameLabel.TextSize               = 11
-        nameLabel.TextXAlignment         = Enum.TextXAlignment.Left
-        nameLabel.Parent                 = row
+        local nameLbl = Instance.new("TextLabel")
+        nameLbl.Size                   = UDim2.new(0, 70, 1, 0)
+        nameLbl.Position               = UDim2.new(0, 22, 0, 0)
+        nameLbl.BackgroundTransparency = 1
+        nameLbl.Text                   = cfg.label
+        nameLbl.TextColor3             = Color3.fromRGB(180, 180, 200)
+        nameLbl.Font                   = Enum.Font.Gotham
+        nameLbl.TextSize               = 10
+        nameLbl.TextXAlignment         = Enum.TextXAlignment.Left
+        nameLbl.Parent                 = row
 
-        local valueLabel = Instance.new("TextLabel")
-        valueLabel.Name                   = "Value"
-        valueLabel.Size                   = UDim2.new(1, -24, 1, 0)
-        valueLabel.Position               = UDim2.new(0, 24, 0, 0)
-        valueLabel.BackgroundTransparency = 1
-        valueLabel.Text                   = "0"
-        valueLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
-        valueLabel.Font                   = Enum.Font.GothamBold
-        valueLabel.TextSize               = 11
-        valueLabel.TextXAlignment         = Enum.TextXAlignment.Right
-        valueLabel.Parent                 = row
+        local valueLbl = Instance.new("TextLabel")
+        valueLbl.Name                   = "Value"
+        valueLbl.Size                   = UDim2.new(0, 50, 1, 0)
+        valueLbl.Position               = UDim2.new(0, 95, 0, 0)
+        valueLbl.BackgroundTransparency = 1
+        valueLbl.Text                   = "0"
+        valueLbl.TextColor3             = Color3.fromRGB(255, 255, 255)
+        valueLbl.Font                   = Enum.Font.GothamBold
+        valueLbl.TextSize               = 10
+        valueLbl.TextXAlignment         = Enum.TextXAlignment.Right
+        valueLbl.Parent                 = row
 
-        statLabels[cfg.key] = valueLabel
+        local rateLbl = nil
+        if cfg.showRate then
+            rateLbl = Instance.new("TextLabel")
+            rateLbl.Name                   = "Rate"
+            rateLbl.Size                   = UDim2.new(0, 60, 1, 0)
+            rateLbl.Position               = UDim2.new(1, -60, 0, 0)
+            rateLbl.BackgroundTransparency = 1
+            rateLbl.Text                   = "0/hr"
+            rateLbl.TextColor3             = Color3.fromRGB(130, 100, 220)
+            rateLbl.Font                   = Enum.Font.Gotham
+            rateLbl.TextSize               = 9
+            rateLbl.TextXAlignment         = Enum.TextXAlignment.Right
+            rateLbl.Parent                 = row
+        end
+
+        statLabels[cfg.key] = { value = valueLbl, rate = rateLbl, showRate = cfg.showRate }
     end
 
     TweenService:Create(container, TweenInfo.new(0.4, Enum.EasingStyle.Quint), {
-        Position               = UDim2.new(0.5, -110, 1, -180),
+        Position               = UDim2.new(1, -12, 1, -20),
         BackgroundTransparency = 0.15,
     }):Play()
+
+    if statsUpdateConn then task.cancel(statsUpdateConn) end
+    statsUpdateConn = task.spawn(function()
+        while statsGui and statsGui.Parent do
+            if timerLabel then
+                timerLabel.Text = "⏱  Session: " .. formatElapsed()
+            end
+            for _, cfg in ipairs(statConfig) do
+                local entry = statLabels[cfg.key]
+                if entry and entry.showRate and entry.rate then
+                    entry.rate.Text = getRate(Stats[cfg.key])
+                end
+            end
+            task.wait(1)
+        end
+    end)
 end
 
 local function updateStatLabel(key)
-    if not statLabels[key] then return end
-    statLabels[key].Text = tostring(Stats[key])
-    local lbl = statLabels[key]
-    TweenService:Create(lbl, TweenInfo.new(0.08), { TextColor3 = Color3.fromRGB(180, 130, 255) }):Play()
+    local entry = statLabels[key]
+    if not entry then return end
+    entry.value.Text = tostring(Stats[key])
+    TweenService:Create(entry.value, TweenInfo.new(0.08), {
+        TextColor3 = Color3.fromRGB(180, 130, 255)
+    }):Play()
     task.delay(0.15, function()
-        TweenService:Create(lbl, TweenInfo.new(0.2), { TextColor3 = Color3.fromRGB(255, 255, 255) }):Play()
+        if entry.value and entry.value.Parent then
+            TweenService:Create(entry.value, TweenInfo.new(0.2), {
+                TextColor3 = Color3.fromRGB(255, 255, 255)
+            }):Play()
+        end
     end)
 end
 
 local function removeStatsUI()
+    if statsPinned then return end
     if statsFrame then
         TweenService:Create(statsFrame, TweenInfo.new(0.4, Enum.EasingStyle.Quint), {
-            Position               = UDim2.new(0.5, -110, 1, 20),
+            Position               = UDim2.new(1, -12, 1, 20),
             BackgroundTransparency = 1,
         }):Play()
     end
     task.delay(0.5, function()
-        if statsGui then
+        if not statsPinned and statsGui then
             statsGui:Destroy()
-            statsGui   = nil
-            statsFrame = nil
-            statLabels = {}
+            statsGui      = nil
+            statsFrame    = nil
+            statLabels    = {}
+            timerLabel    = nil
+            statsVisible  = false
         end
     end)
 end
 
 local function scheduleStatsRemoval()
+    if statsPinned then return end
     if hideCountdown then task.cancel(hideCountdown) end
     hideCountdown = task.delay(10, function()
         removeStatsUI()
@@ -447,6 +592,9 @@ local function getRemote(path)
 end
 
 local RF, BatchRF, EggRF, ClickRF, CritRF, PetRF, MutateRF, UpgradeRF, AscendRF, RuneRF
+local RebirthRE, TimedRewardRE, DailyRewardRE, SpinRE
+local PetLockRF, PetDeleteRF, PetCraftRF
+local onGuiEquipRE, onClickRE
 
 task.spawn(function()
     local timeout = 30
@@ -455,7 +603,7 @@ task.spawn(function()
     until RS:FindFirstChild("Packages") or elapsed >= timeout
 
     if elapsed >= timeout then
-        Rayfield:Notify({
+        safeNotify({
             Title    = "Warning",
             Content  = "Remote loader timed out. Some features may not work.",
             Duration = 6,
@@ -463,23 +611,34 @@ task.spawn(function()
         })
     end
 
-    RF        = getRemote({"Packages","Knit","Services","CarrotSpawningService","RF","CarrotCollected"})
-    BatchRF   = getRemote({"Packages","Knit","Services","CarrotSpawningService","RF","CarrotCollectedBatch"})
-    EggRF     = getRemote({"Packages","Knit","Services","EggService","RF","purchaseEgg"})
-    ClickRF   = getRemote({"Packages","Knit","Services","ArmWrestleService","RF","RequestClick"})
-    CritRF    = getRemote({"Packages","Knit","Services","ArmWrestleService","RF","RequestCritHit"})
-    PetRF     = getRemote({"Packages","Knit","Services","PetService","RF","getOwned"})
-    MutateRF  = getRemote({"Packages","Knit","Services","PetCombineService","RF","mutate"})
-    UpgradeRF = getRemote({"Packages","Knit","Services","CarrotUpgradesService","RF","BuyUpgrade"})
-    AscendRF  = getRemote({"Packages","Knit","Services","CarrotAscensionService","RF","BuyAscension"})
-    RuneRF    = getRemote({"Packages","Knit","Services","CarrotRunesService","RF","PushRuneButton"})
+    RF         = getRemote({"Packages","Knit","Services","CarrotSpawningService","RF","CarrotCollected"})
+    BatchRF    = getRemote({"Packages","Knit","Services","CarrotSpawningService","RF","CarrotCollectedBatch"})
+    EggRF      = getRemote({"Packages","Knit","Services","EggService","RF","purchaseEgg"})
+    ClickRF    = getRemote({"Packages","Knit","Services","ArmWrestleService","RF","RequestClick"})
+    CritRF     = getRemote({"Packages","Knit","Services","ArmWrestleService","RF","RequestCritHit"})
+    PetRF      = getRemote({"Packages","Knit","Services","PetService","RF","getOwned"})
+    MutateRF   = getRemote({"Packages","Knit","Services","PetCombineService","RF","mutate"})
+    UpgradeRF  = getRemote({"Packages","Knit","Services","CarrotUpgradesService","RF","BuyUpgrade"})
+    AscendRF   = getRemote({"Packages","Knit","Services","CarrotAscensionService","RF","BuyAscension"})
+    RuneRF     = getRemote({"Packages","Knit","Services","CarrotRunesService","RF","PushRuneButton"})
+
+    -- New remotes
+    RebirthRE     = getRemote({"Packages","Knit","Services","RebirthService","RE","onRebirthRequest"})
+    TimedRewardRE = getRemote({"Packages","Knit","Services","TimedRewardService","RE","onClaim"})
+    DailyRewardRE = getRemote({"Packages","Knit","Services","DailyRewardService","RE","onClaimReward"})
+    SpinRE        = getRemote({"Packages","Knit","Services","SpinService","RE","onSpinRequest"})
+    PetLockRF     = getRemote({"Packages","Knit","Services","PetService","RF","updateLocked"})
+    PetDeleteRF   = getRemote({"Packages","Knit","Services","PetService","RF","delete"})
+    PetCraftRF    = getRemote({"Packages","Knit","Services","PetService","RF","craft"})
+    onGuiEquipRE  = getRemote({"Packages","Knit","Services","ToolService","RE","onGuiEquipRequest"})
+    onClickRE     = getRemote({"Packages","Knit","Services","ToolService","RE","onClick"})
 
     remotesReady = true
     logExecution()
 
-    Rayfield:Notify({
+    safeNotify({
         Title    = "MRC Hub",
-        Content  = "All remotes loaded. You're good to go!",
+        Content  = "All remotes loaded — ready to go!",
         Duration = 4,
         Image    = 4483362458,
     })
@@ -487,9 +646,9 @@ end)
 
 local function checkRemotes(featureName)
     if not remotesReady then
-        Rayfield:Notify({
+        safeNotify({
             Title    = "Not Ready",
-            Content  = featureName .. " — remotes still loading, try again in a moment.",
+            Content  = featureName .. " — remotes still loading.",
             Duration = 3,
             Image    = 4483362458,
         })
@@ -621,7 +780,11 @@ local function hidePart(obj, char)
     end
     if IGNORED_FOLDERS[topParent.Name] or (char and obj:IsDescendantOf(char)) then return end
     if not savedMapProps[obj] then
-        savedMapProps[obj] = { Transparency = obj.Transparency, CanCollide = obj.CanCollide, CastShadow = obj.CastShadow }
+        savedMapProps[obj] = {
+            Transparency = obj.Transparency,
+            CanCollide   = obj.CanCollide,
+            CastShadow   = obj.CastShadow,
+        }
         obj.Transparency = 1
         obj.CanCollide   = false
         obj.CastShadow   = false
@@ -649,7 +812,9 @@ local function hideMap()
     local descendants = workspace:GetDescendants()
     task.spawn(function()
         for i = 1, #descendants, 200 do
-            for j = i, math.min(i + 199, #descendants) do hidePart(descendants[j], char) end
+            for j = i, math.min(i + 199, #descendants) do
+                hidePart(descendants[j], char)
+            end
             task.wait()
         end
     end)
@@ -675,67 +840,58 @@ local function showMap()
 end
 
 -- ================================================
--- HIDE SCREEN (MAX PERFORMANCE MODE)
--- Suppresses: ScreenGuis, NPC Animate scripts,
---             Particles, Beams, Sounds, Lighting FX
---             + moves camera to void
+-- HIDE SCREEN
 -- ================================================
-
-
 local MRC_LOGO_ASSET_ID = "rbxassetid://100235177115292"
 
 local PROTECTED_GUIS = {
     MRCBlackOverlay = true,
     MRCStatsOverlay = true,
-    RayfieldUI      = true,  -- adjust if Rayfield names its ScreenGui differently
+    RayfieldUI      = true,
 }
 
-local blackOverlayGui    = nil
-local savedCamCFrame     = nil
-local savedCamType       = nil
-local savedGuiStates     = {}
-local savedScriptStates  = {}
-local savedParticleStates= {}
-local savedSoundStates   = {}
+local blackOverlayGui     = nil
+local savedCamCFrame      = nil
+local savedCamType        = nil
+local savedGuiStates      = {}
+local savedScriptStates   = {}
+local savedParticleStates = {}
+local savedSoundStates    = {}
 
 local function hideScreen()
     local pg = LocalPlayer:WaitForChild("PlayerGui")
 
-    -- 1. BLACK OVERLAY
-    blackOverlayGui = Instance.new("ScreenGui")
+    blackOverlayGui              = Instance.new("ScreenGui")
     blackOverlayGui.Name         = "MRCBlackOverlay"
     blackOverlayGui.ResetOnSpawn = false
     blackOverlayGui.DisplayOrder = 9999
     blackOverlayGui.Parent       = pg
 
-    local frame = Instance.new("Frame")
-    frame.Size                   = UDim2.new(1, 0, 1, 0)
-    frame.BackgroundColor3       = Color3.new(0, 0, 0)
-    frame.BackgroundTransparency = 0
-    frame.BorderSizePixel        = 0
-    frame.Parent                 = blackOverlayGui
+    local frame                    = Instance.new("Frame")
+    frame.Size                     = UDim2.new(1, 0, 1, 0)
+    frame.BackgroundColor3         = Color3.new(0, 0, 0)
+    frame.BackgroundTransparency   = 0
+    frame.BorderSizePixel          = 0
+    frame.Parent                   = blackOverlayGui
 
-    -- MRC logo (static PNG, small, centred — minimal texture overhead)
-    local logo = Instance.new("ImageLabel")
-    logo.Size                   = UDim2.new(0, 110, 0, 110)
-    logo.Position               = UDim2.new(0.5, -55, 0.5, -75)
-    logo.BackgroundTransparency = 1
-    logo.Image                  = MRC_LOGO_ASSET_ID
-    logo.ScaleType              = Enum.ScaleType.Fit
-    logo.Parent                 = blackOverlayGui
+    local logo                     = Instance.new("ImageLabel")
+    logo.Size                      = UDim2.new(0, 110, 0, 110)
+    logo.Position                  = UDim2.new(0.5, -55, 0.5, -75)
+    logo.BackgroundTransparency    = 1
+    logo.Image                     = MRC_LOGO_ASSET_ID
+    logo.ScaleType                 = Enum.ScaleType.Fit
+    logo.Parent                    = blackOverlayGui
 
-    -- Status label below logo
-    local lbl = Instance.new("TextLabel")
-    lbl.Size                   = UDim2.new(1, 0, 0, 24)
-    lbl.Position               = UDim2.new(0, 0, 0.5, 45)
-    lbl.BackgroundTransparency = 1
-    lbl.Text                   = "⚡ Screen Hidden — toggle off to restore"
-    lbl.TextColor3             = Color3.fromRGB(110, 70, 210)
-    lbl.Font                   = Enum.Font.GothamBold
-    lbl.TextSize               = 12
-    lbl.Parent                 = blackOverlayGui
+    local lbl                      = Instance.new("TextLabel")
+    lbl.Size                       = UDim2.new(1, 0, 0, 24)
+    lbl.Position                   = UDim2.new(0, 0, 0.5, 45)
+    lbl.BackgroundTransparency     = 1
+    lbl.Text                       = "⚡ Screen Hidden — toggle off to restore"
+    lbl.TextColor3                 = Color3.fromRGB(110, 70, 210)
+    lbl.Font                       = Enum.Font.GothamBold
+    lbl.TextSize                   = 12
+    lbl.Parent                     = blackOverlayGui
 
-    -- 2. DISABLE ALL SCREENGUIS (except MRC's own)
     savedGuiStates = {}
     for _, gui in ipairs(pg:GetChildren()) do
         if gui:IsA("ScreenGui") and not PROTECTED_GUIS[gui.Name] then
@@ -744,7 +900,6 @@ local function hideScreen()
         end
     end
 
-    -- 3. DISABLE NPC ANIMATE / IDLE / WAVE SCRIPTS in workspace
     savedScriptStates = {}
     local char = LocalPlayer.Character
     task.spawn(function()
@@ -759,7 +914,6 @@ local function hideScreen()
         end
     end)
 
-    -- 4. DISABLE PARTICLES, BEAMS, TRAILS in workspace
     savedParticleStates = {}
     task.spawn(function()
         for _, obj in ipairs(workspace:GetDescendants()) do
@@ -770,7 +924,6 @@ local function hideScreen()
         end
     end)
 
-    -- 5. MUTE ALL SOUNDS in workspace
     savedSoundStates = {}
     task.spawn(function()
         for _, obj in ipairs(workspace:GetDescendants()) do
@@ -781,14 +934,12 @@ local function hideScreen()
         end
     end)
 
-    -- 6. CAMERA TO VOID (stops world render entirely)
-    local cam = workspace.CurrentCamera
+    local cam      = workspace.CurrentCamera
     savedCamType   = cam.CameraType
     savedCamCFrame = cam.CFrame
     cam.CameraType = Enum.CameraType.Scriptable
     cam.CFrame     = CFrame.new(0, -100000, 0)
 
-    -- 7. ALL LIGHTING FX (full pass, catches nested folders)
     task.spawn(function()
         for _, obj in ipairs(Lighting:GetDescendants()) do
             local cn = obj.ClassName
@@ -809,57 +960,127 @@ local function hideScreen()
 end
 
 local function showScreen()
-    -- Remove overlay
-    if blackOverlayGui then
-        blackOverlayGui:Destroy()
-        blackOverlayGui = nil
-    end
+    if blackOverlayGui then blackOverlayGui:Destroy(); blackOverlayGui = nil end
 
-    -- Restore ScreenGuis
     for gui, wasEnabled in pairs(savedGuiStates) do
-        if gui and gui.Parent then
-            pcall(function() gui.Enabled = wasEnabled end)
-        end
+        if gui and gui.Parent then pcall(function() gui.Enabled = wasEnabled end) end
     end
     savedGuiStates = {}
 
-    -- Restore NPC scripts
     for scr, wasEnabled in pairs(savedScriptStates) do
-        if scr and scr.Parent then
-            pcall(function() scr.Enabled = wasEnabled end)
-        end
+        if scr and scr.Parent then pcall(function() scr.Enabled = wasEnabled end) end
     end
     savedScriptStates = {}
 
-    -- Restore particles/beams/trails
     for obj, wasEnabled in pairs(savedParticleStates) do
-        if obj and obj.Parent then
-            pcall(function() obj.Enabled = wasEnabled end)
-        end
+        if obj and obj.Parent then pcall(function() obj.Enabled = wasEnabled end) end
     end
     savedParticleStates = {}
 
-    -- Restore sounds
     for obj, vol in pairs(savedSoundStates) do
-        if obj and obj.Parent then
-            pcall(function() obj.Volume = vol end)
-        end
+        if obj and obj.Parent then pcall(function() obj.Volume = vol end) end
     end
     savedSoundStates = {}
 
-    -- Restore camera
     local cam = workspace.CurrentCamera
-    if savedCamType then
-        cam.CameraType = savedCamType
-        savedCamType   = nil
-    end
-    if savedCamCFrame then
-        cam.CFrame     = savedCamCFrame
-        savedCamCFrame = nil
-    end
+    if savedCamType   then cam.CameraType = savedCamType;   savedCamType   = nil end
+    if savedCamCFrame then cam.CFrame     = savedCamCFrame; savedCamCFrame = nil end
 
-    -- Restore lighting (reuses existing table + function)
     enableLightingEffects()
+end
+
+-- ================================================
+-- EGG DATA
+-- ================================================
+local EggData = {
+    ["School"]          = {"Earth","Icy","Lava","Blackhole"},
+    ["Space Gym"]       = {"Burning","Moon","Crystal","Molten","Ice","Solar"},
+    ["Beach"]           = {"Treasure","Coconut","Poseidon","Clam","Palm","KingFish"},
+    ["Bunker"]          = {"Widget","Iridescent","Nuclear","Mutant","Atom","Rust"},
+    ["Dino"]            = {"Herbivore","Gem","TRex","DinoFossil","Mystic","Pterodactyl"},
+    ["Void"]            = {"Void","Star","Nebula","Wormhole"},
+    ["Space Center"]    = {"Rocket","Cyberpunk","Meteor","Deepsea"},
+    ["Roman Empire"]    = {"Gladius","Arena","Lionheart","Praetorian"},
+    ["Underworld"]      = {"Ember","Inferno","Eternal","Heated"},
+    ["Magic Forest"]    = {"Critters","Pixie","Berserker","Mushroom"},
+    ["Snowy Peaks"]     = {"Frozen","Iced"},
+    ["Dusty Tavern"]    = {"Miner","Bandit"},
+    ["Lost Kingdom"]    = {"Knight","Kingdom"},
+    ["Orc Paradise"]    = {"Orc","Paradise"},
+    ["Heavenly Island"] = {"Virtous","Evil"},
+    ["The Rift"]        = {"Dream","Rift","Starlight","Twilight"},
+}
+
+local worldOrder = {
+    "School","Space Gym","Beach","Bunker","Dino","Void",
+    "Space Center","Roman Empire","Underworld","Magic Forest",
+    "Snowy Peaks","Dusty Tavern","Lost Kingdom","Orc Paradise",
+    "Heavenly Island","The Rift",
+}
+
+local selectedEgg       = "Earth"
+local selectedHatchType = "Single (1x)"
+local universalHatching = false
+
+-- ================================================
+-- PET RARITY HELPERS
+-- ================================================
+local RarityColors = {
+    Common    = Color3.fromRGB(181, 181, 181),
+    Uncommon  = Color3.fromRGB(0,   218, 4),
+    Rare      = Color3.fromRGB(0,   116, 255),
+    Epic      = Color3.fromRGB(233, 0,   247),
+    Legendary = Color3.fromRGB(255, 152, 0),
+    Mythic    = Color3.fromRGB(31,  31,  31),
+    Omega     = Color3.fromRGB(120, 0,   166),
+    Exclusive = Color3.fromRGB(255, 200, 1),
+}
+
+-- Which rarities are toggled on for pet operations
+local selectedRarities = {
+    Common    = false,
+    Uncommon  = false,
+    Rare      = false,
+    Epic      = false,
+    Legendary = false,
+    Mythic    = false,
+    Omega     = false,
+    Exclusive = false,
+}
+
+local function getPetScrollFrame()
+    return pcall(function()
+        return LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Pets.ScrollingFrame.Pets
+    end)
+end
+
+local function iteratePets(callback)
+    local ok, scroll = pcall(function()
+        return LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Pets.ScrollingFrame.Pets
+    end)
+    if not ok or not scroll then return end
+    for _, v in ipairs(scroll:GetChildren()) do
+        if v:IsA("Frame") then
+            local toggle = v:FindFirstChild("Toggle")
+            if toggle then
+                callback(v, toggle)
+            end
+        end
+    end
+end
+
+local function getRarityColor(toggle)
+    local bg = toggle:FindFirstChild("SpikeyBackground")
+    return bg and bg.ImageColor3 or nil
+end
+
+local function isSelectedRarity(color)
+    for name, active in pairs(selectedRarities) do
+        if active and RarityColors[name] == color then
+            return true
+        end
+    end
+    return false
 end
 
 -- ================================================
@@ -891,15 +1112,9 @@ local function startCollecting()
 end
 
 local function stopCollecting()
-    if connection then
-        connection:Disconnect()
-        connection = nil
-    end
+    if connection then connection:Disconnect(); connection = nil end
 end
 
--- ================================================
--- DYNAMIC HATCH COUNT
--- ================================================
 local function getHatchCount()
     local ok, result = pcall(function()
         local customHatch = LocalPlayer.PlayerGui.GameUI.Menus.EggOpen.CustomHatch
@@ -913,9 +1128,6 @@ local function getHatchCount()
     return (ok and type(result) == "number" and result > 1) and result or 1
 end
 
--- ================================================
--- AUTO HATCH (NORMAL)
--- ================================================
 local function startHatching()
     while State.hatching do
         if EggRF then
@@ -934,29 +1146,26 @@ local function startHatching()
                 checkMilestone("eggs", Stats.eggs)
             end
         end
-        task.wait(0.15 + math.random(0, 5) / 100)
+        task.wait(0.15 + math.random(0, 8) / 100)
     end
 end
 
--- ================================================
--- AUTO HATCH EVENT EGG
--- ================================================
-local selectedEventHatchType = "1x"
+local selectedEventHatchType = "No Gamepass (1x)"
 
 local function startHatchingEvent()
     while State.hatchingEvent do
         if EggRF then
-            local count
+            local count = 1
             local ok, result = pcall(function()
-                if selectedEventHatchType == "1x" then
+                if selectedEventHatchType == "No Gamepass (1x)" then
                     count = 1
-                    return EggRF:InvokeServer("Bunny", {}, false)
-                elseif selectedEventHatchType == "3x" then
+                    return EggRF:InvokeServer("Bunny", nil, false, true, false, nil, nil)
+                elseif selectedEventHatchType == "3x Gamepass" then
                     count = 3
-                    return EggRF:InvokeServer("Bunny", {}, true, false)
+                    return EggRF:InvokeServer("Bunny", nil, true, false, nil, nil, nil)
                 else
                     count = 8
-                    return EggRF:InvokeServer("Bunny", {}, false, true)
+                    return EggRF:InvokeServer("Bunny", nil, nil, true, true, true, nil)
                 end
             end)
             if ok and result then
@@ -965,13 +1174,10 @@ local function startHatchingEvent()
                 checkMilestone("eggs", Stats.eggs)
             end
         end
-        task.wait(0.15 + math.random(0, 5) / 100)
+        task.wait(0.15 + math.random(0, 8) / 100)
     end
 end
 
--- ================================================
--- OTHER FEATURES
--- ================================================
 local function mutateBatch()
     if not PetRF or not MutateRF then return end
     local success, pets = pcall(function() return PetRF:InvokeServer(LocalPlayer) end)
@@ -983,7 +1189,7 @@ local function mutateBatch()
             Stats.mutations += 1
             updateStatLabel("mutations")
             checkMilestone("mutations", Stats.mutations)
-            task.wait(math.random(40, 70) / 100)
+            task.wait(math.random(40, 80) / 100)
         end
     end
 end
@@ -996,10 +1202,10 @@ local function startAutoUpgrade()
     while State.upgrading do
         if UpgradeRF then
             pcall(function() UpgradeRF:InvokeServer("BunnyBurrow", "MoreCarrots") end)
-            task.wait(0.2)
+            task.wait(0.2 + math.random(0, 10) / 100)
             pcall(function() UpgradeRF:InvokeServer("BunnyBurrow", "MoreSpawns") end)
         end
-        task.wait(math.random(40, 70) / 100)
+        task.wait(math.random(40, 80) / 100)
     end
 end
 
@@ -1016,7 +1222,7 @@ local function startClicking()
             if CritRF and critTick % 5 == 0 then
                 pcall(function() CritRF:InvokeServer() end)
             end
-            task.wait(0.04 + math.random(0, 10) / 1000)
+            task.wait(0.04 + math.random(0, 15) / 1000)
         end
     end)
 end
@@ -1024,7 +1230,7 @@ end
 local function startAutoAscend()
     while State.ascending do
         if AscendRF then pcall(function() AscendRF:InvokeServer("BunnyBurrow") end) end
-        task.wait(math.random(3, 5))
+        task.wait(math.random(3, 6) + math.random(0, 10) / 10)
     end
 end
 
@@ -1038,16 +1244,204 @@ local function startAutoRune()
                 checkMilestone("runes", Stats.runes)
             end
         end
-        task.wait(0.3 + math.random(10, 20) / 100)
+        task.wait(0.3 + math.random(10, 25) / 100)
     end
+end
+
+-- ================================================
+-- NEW FEATURE LOOPS
+-- ================================================
+local function startAutoRebirth()
+    while State.rebirthing do
+        if RebirthRE then
+            pcall(function() RebirthRE:FireServer() end)
+        end
+        task.wait(0.5 + math.random(0, 10) / 100)
+    end
+end
+
+local function startClaimFreeGifts()
+    while State.claimFree do
+        if TimedRewardRE then
+            pcall(function() TimedRewardRE:FireServer(math.random(1, 14)) end)
+        end
+        task.wait(0.5 + math.random(0, 10) / 100)
+    end
+end
+
+local function startClaimDailyGifts()
+    while State.claimDaily do
+        if DailyRewardRE then
+            pcall(function() DailyRewardRE:FireServer() end)
+        end
+        task.wait(0.5 + math.random(0, 10) / 100)
+    end
+end
+
+local function startAutoSpin()
+    while State.autoSpin do
+        if SpinRE then
+            pcall(function() SpinRE:FireServer() end)
+        end
+        task.wait(0.3 + math.random(0, 10) / 100)
+    end
+end
+
+local function doLockPets(lock)
+    if not PetLockRF then return end
+    iteratePets(function(frame, toggle)
+        local color = getRarityColor(toggle)
+        if color and isSelectedRarity(color) then
+            local lockIcon = toggle:FindFirstChild("LockPet")
+            if lockIcon then
+                local alreadyLocked = lockIcon.Visible
+                if lock ~= alreadyLocked then
+                    pcall(function() PetLockRF:InvokeServer({[frame.Name] = lock}) end)
+                    lockIcon.Visible = lock
+                    task.wait(0.05)
+                end
+            end
+        end
+    end)
+end
+
+local function startLockPets()
+    while State.lockPets do
+        doLockPets(true)
+        task.wait(1)
+    end
+end
+
+local function startUnlockPets()
+    while State.unlockPets do
+        doLockPets(false)
+        task.wait(1)
+    end
+end
+
+local function startDeletePets()
+    while State.deletePets do
+        if PetDeleteRF then
+            iteratePets(function(frame, toggle)
+                local color = getRarityColor(toggle)
+                if color and isSelectedRarity(color) then
+                    local lockIcon = toggle:FindFirstChild("LockPet")
+                    if lockIcon and not lockIcon.Visible then
+                        pcall(function() PetDeleteRF:InvokeServer(frame.Name) end)
+                        task.wait(0.05)
+                    end
+                end
+            end)
+        end
+        task.wait(1)
+    end
+end
+
+local function startCraftPets()
+    while State.craftPets do
+        if PetCraftRF then
+            iteratePets(function(frame, toggle)
+                local color = getRarityColor(toggle)
+                if color and isSelectedRarity(color) then
+                    local lockIcon = toggle:FindFirstChild("LockPet")
+                    if lockIcon and not lockIcon.Visible then
+                        pcall(function() PetCraftRF:InvokeServer(frame.Name, true) end)
+                        task.wait(0.05)
+                    end
+                end
+            end)
+        end
+        task.wait(1)
+    end
+end
+
+-- ================================================
+-- TOOL FARM HELPERS
+-- ================================================
+local selectedZone     = "Zone 1 (School)"
+local selectedTool     = "Dumbells"
+local autoToolFarming  = false
+
+local function getZoneId()
+    return selectedZone:match("Zone (%d+)")
+end
+
+local ZoneList = {
+    "Zone 1 (School)", "Zone 2 (Space Gym)", "Zone 3 (Beach)",
+    "Zone 4 (Bunker)", "Zone 5 (Dino)", "Zone 6 (Void)",
+    "Zone 7 (Space Center)", "Zone 8 (Roman Empire)", "Zone 9 (Underworld)",
+    "Zone 10 (Magic Forest)", "Zone 11 (Snowy Peaks)", "Zone 12 (Dusty Tavern)",
+    "Zone 13 (Lost Kingdom)", "Zone 14 (Orc Paradise)", "Zone 15 (Heavenly Island)",
+    "Zone 16 (The Rift)",
+}
+
+-- Best tool tier per zone per type (simplified — picks highest tier available)
+local ToolTiers = {
+    Dumbells = {
+        ["1"] = "250Kg",  ["2"] = "4000Kg",  ["3"] = "45000Kg",
+        ["4"] = "300000Kg", ["5"] = "625000Kg", ["6"] = "625000Kg",
+        ["7"] = "925000Kg", ["8"] = "925000Kg", ["9"] = "925000Kg",
+        ["10"] = "Magic12", ["11"] = "Ice12",   ["12"] = "Mining12",
+        ["13"] = "Kingdom12", ["14"] = "Paradise12", ["15"] = "Heaven12",
+        ["16"] = "Rift12",
+    },
+    Barbells = {
+        ["1"] = "Tier3",  ["2"] = "Tier6",  ["3"] = "Tier9",
+        ["4"] = "Tier12", ["5"] = "Tier15", ["6"] = "Tier18",
+        ["7"] = "Tier21", ["8"] = "Tier24", ["9"] = "Tier27",
+        ["10"] = "Tier30", ["11"] = "Tier33", ["12"] = "Mining3",
+        ["13"] = "Kingdom3", ["14"] = "Paradise3", ["15"] = "Heaven3",
+        ["16"] = "Rift3",
+    },
+    Grips = {
+        ["1"] = "250Kg",  ["2"] = "1500Kg", ["3"] = "45000Kg",
+        ["4"] = "300000Kg", ["5"] = "625000Kg", ["6"] = "925000Kg",
+        ["7"] = "1150000Kg", ["8"] = "1150000Kg", ["9"] = "1150000Kg",
+        ["10"] = "1150000Kg", ["11"] = "Ice12", ["12"] = "Mining12",
+        ["13"] = "Kingdom12", ["14"] = "Paradise12", ["15"] = "Heaven12",
+        ["16"] = "Heaven12",
+    },
+}
+
+local function startToolFarm()
+    while autoToolFarming do
+        if onGuiEquipRE and onClickRE then
+            local zoneId = getZoneId()
+            local tier   = ToolTiers[selectedTool] and ToolTiers[selectedTool][zoneId]
+            if zoneId and tier then
+                pcall(function()
+                    onGuiEquipRE:FireServer(zoneId, selectedTool, tier)
+                    onClickRE:FireServer()
+                end)
+            end
+        end
+        task.wait(0.05 + math.random(0, 5) / 100)
+    end
+end
+
+-- ================================================
+-- CLEANUP
+-- ================================================
+_G.MRCHubCleanup = function()
+    for k in pairs(State) do State[k] = false end
+    stopCollecting()
+    autoToolFarming = false
+    universalHatching = false
+    if statsGui then statsGui:Destroy(); statsGui = nil end
+    if blackOverlayGui then blackOverlayGui:Destroy(); blackOverlayGui = nil end
+    showScreen()
+    showMap()
+    enableLightingEffects()
+    enablePerfScripts()
 end
 
 -- ================================================
 -- UI — MAIN TAB
 -- ================================================
+MainTab:CreateSection("General")
 
 MainTab:CreateButton({
-    Name     = "💬 Join Discord Server",
+    Name     = "💬 Join Discord — discord.gg/YV3GjGw3PY",
     Callback = function()
         pcall(function()
             if syn and syn.open_url then
@@ -1058,7 +1452,7 @@ MainTab:CreateButton({
                 setclipboard("https://discord.gg/YV3GjGw3PY")
             end
         end)
-        Rayfield:Notify({
+        safeNotify({
             Title    = "Discord",
             Content  = "discord.gg/YV3GjGw3PY — opening or copied to clipboard!",
             Duration = 5,
@@ -1089,7 +1483,7 @@ MainTab:CreateToggle({
             hideMap()
             disablePerfScripts()
             disableLightingEffects()
-            Rayfield:Notify({
+            safeNotify({
                 Title    = "Performance Mode ON",
                 Content  = "Map hidden, UI scripts & lighting effects disabled.",
                 Duration = 4,
@@ -1099,7 +1493,7 @@ MainTab:CreateToggle({
             showMap()
             enablePerfScripts()
             enableLightingEffects()
-            Rayfield:Notify({
+            safeNotify({
                 Title    = "Performance Mode OFF",
                 Content  = "Map and all effects restored.",
                 Duration = 3,
@@ -1117,7 +1511,7 @@ MainTab:CreateToggle({
         State.screenHidden = v
         if v then
             hideScreen()
-            Rayfield:Notify({
+            safeNotify({
                 Title    = "Screen Hidden",
                 Content  = "Camera voided, UI + NPCs + particles + sounds suppressed.",
                 Duration = 4,
@@ -1125,7 +1519,7 @@ MainTab:CreateToggle({
             })
         else
             showScreen()
-            Rayfield:Notify({
+            safeNotify({
                 Title    = "Screen Restored",
                 Content  = "Everything brought back.",
                 Duration = 3,
@@ -1136,8 +1530,141 @@ MainTab:CreateToggle({
 })
 
 -- ================================================
+-- UI — MAIN TAB: UNIVERSAL HATCH
+-- ================================================
+MainTab:CreateSection("Universal Egg Hatch")
+
+MainTab:CreateDropdown({
+    Name          = "Select Egg",
+    Options       = (function()
+        local flat = {}
+        for _, world in ipairs(worldOrder) do
+            for _, egg in ipairs(EggData[world]) do
+                table.insert(flat, world .. " — " .. egg)
+            end
+        end
+        return flat
+    end)(),
+    CurrentOption = {"School — Earth"},
+    Flag          = "SelectedEgg",
+    Callback      = function(v)
+        local raw = v[1]:match("— (.+)$")
+        if raw then selectedEgg = raw end
+    end,
+})
+
+MainTab:CreateDropdown({
+    Name          = "Hatch Type",
+    Options       = {"Single (1x)", "Triple (3x)", "Octuple (8x)"},
+    CurrentOption = {"Single (1x)"},
+    Flag          = "HatchType",
+    Callback      = function(v)
+        selectedHatchType = v[1]
+    end,
+})
+
+MainTab:CreateToggle({
+    Name         = "Auto Hatch (Any Egg)",
+    CurrentValue = false,
+    Flag         = "UniversalHatch",
+    Callback     = function(v)
+        if v and not checkRemotes("Auto Hatch (Any Egg)") then return end
+        universalHatching = v
+        if v then
+            cancelStatsRemoval()
+            createStatsUI()
+            safeNotify({
+                Title    = "Auto Hatch Started",
+                Content  = "Hatching: " .. selectedEgg .. " [" .. selectedHatchType .. "]",
+                Duration = 4,
+                Image    = 4483362458,
+            })
+            task.spawn(function()
+                while universalHatching do
+                    if EggRF then
+                        local count = 1
+                        local ok, result = pcall(function()
+                            if selectedHatchType == "Single (1x)" then
+                                count = 1
+                                return EggRF:InvokeServer(selectedEgg, {}, false)
+                            elseif selectedHatchType == "Triple (3x)" then
+                                count = 3
+                                return EggRF:InvokeServer(selectedEgg, {}, true, false)
+                            else
+                                count = 8
+                                return EggRF:InvokeServer(selectedEgg, {}, false, true)
+                            end
+                        end)
+                        if ok and result then
+                            Stats.eggs += count
+                            updateStatLabel("eggs")
+                            checkMilestone("eggs", Stats.eggs)
+                        end
+                    end
+                    task.wait(0.15 + math.random(0, 8) / 100)
+                end
+            end)
+        else
+            scheduleStatsRemoval()
+        end
+    end,
+})
+
+-- ================================================
+-- UI — MAIN TAB: TOOL FARM
+-- ================================================
+MainTab:CreateSection("Tool Farm")
+
+MainTab:CreateDropdown({
+    Name          = "Select Zone",
+    Options       = ZoneList,
+    CurrentOption = {"Zone 1 (School)"},
+    Flag          = "ToolZone",
+    Callback      = function(v)
+        selectedZone = v[1]
+        safeNotify({
+            Title    = "Zone Changed",
+            Content  = "Tool farm zone set to: " .. selectedZone,
+            Duration = 3,
+            Image    = 4483362458,
+        })
+    end,
+})
+
+MainTab:CreateDropdown({
+    Name          = "Select Tool",
+    Options       = {"Dumbells", "Barbells", "Grips"},
+    CurrentOption = {"Dumbells"},
+    Flag          = "ToolType",
+    Callback      = function(v)
+        selectedTool = v[1]
+    end,
+})
+
+MainTab:CreateToggle({
+    Name         = "Auto Farm Tools",
+    CurrentValue = false,
+    Flag         = "AutoToolFarm",
+    Callback     = function(v)
+        if v and not checkRemotes("Auto Farm Tools") then return end
+        autoToolFarming = v
+        if v then
+            safeNotify({
+                Title    = "Tool Farm Started",
+                Content  = selectedTool .. " in " .. selectedZone,
+                Duration = 4,
+                Image    = 4483362458,
+            })
+            task.spawn(startToolFarm)
+        end
+    end,
+})
+
+-- ================================================
 -- UI — EVENT TAB
 -- ================================================
+EventTab:CreateSection("Event Features")
+
 EventTab:CreateToggle({
     Name         = "Auto Collect Carrots",
     CurrentValue = false,
@@ -1163,14 +1690,20 @@ EventTab:CreateToggle({
     Callback     = function(v)
         if v and not checkRemotes("Auto Hatch") then return end
         State.hatching = v
-        if v then task.spawn(startHatching) end
+        if v then
+            cancelStatsRemoval()
+            createStatsUI()
+            task.spawn(startHatching)
+        else
+            scheduleStatsRemoval()
+        end
     end,
 })
 
 EventTab:CreateDropdown({
-    Name          = "Event Hatch Amount",
-    Options       = {"1x", "3x+", "8x+"},
-    CurrentOption = {"1x"},
+    Name          = "Event Hatch Gamepass",
+    Options       = {"No Gamepass (1x)", "3x Gamepass", "8x Gamepass"},
+    CurrentOption = {"No Gamepass (1x)"},
     Flag          = "EventHatchType",
     Callback      = function(v) selectedEventHatchType = v[1] end,
 })
@@ -1186,7 +1719,7 @@ EventTab:CreateToggle({
             cancelStatsRemoval()
             createStatsUI()
             task.spawn(startHatchingEvent)
-            Rayfield:Notify({
+            safeNotify({
                 Title    = "Auto Hatch Event",
                 Content  = "Hatching Bunny eggs — " .. selectedEventHatchType .. " per cycle.",
                 Duration = 4,
@@ -1228,11 +1761,34 @@ EventTab:CreateToggle({
         if v and not checkRemotes("Auto Rune") then return end
         State.running = v
         if v then
+            cancelStatsRemoval()
+            createStatsUI()
             task.spawn(startAutoRune)
-            Rayfield:Notify({
+            safeNotify({
                 Title    = "Auto Rune",
-                Content  = "Rolling runes — costs 1000 carrots each. Make sure Auto Collect is on!",
+                Content  = "Rolling runes — costs 1000 carrots each.",
                 Duration = 5,
+                Image    = 4483362458,
+            })
+        else
+            scheduleStatsRemoval()
+        end
+    end,
+})
+
+EventTab:CreateToggle({
+    Name         = "Auto Rebirth",
+    CurrentValue = false,
+    Flag         = "AutoRebirth",
+    Callback     = function(v)
+        if v and not checkRemotes("Auto Rebirth") then return end
+        State.rebirthing = v
+        if v then
+            task.spawn(startAutoRebirth)
+            safeNotify({
+                Title    = "Auto Rebirth",
+                Content  = "Firing rebirth remote in a loop.",
+                Duration = 4,
                 Image    = 4483362458,
             })
         end
@@ -1242,6 +1798,8 @@ EventTab:CreateToggle({
 -- ================================================
 -- UI — MUTATE TAB
 -- ================================================
+MutateTab:CreateSection("Pet Mutate")
+
 MutateTab:CreateToggle({
     Name         = "Auto Mutate All Pets",
     CurrentValue = false,
@@ -1252,3 +1810,327 @@ MutateTab:CreateToggle({
         if v then task.spawn(startAutoMutate) end
     end,
 })
+
+-- ================================================
+-- UI — PETS TAB
+-- ================================================
+PetsTab:CreateSection("Rarity Selection (applies to all pet actions below)")
+
+for _, rarityName in ipairs({"Common","Uncommon","Rare","Epic","Legendary","Mythic","Omega","Exclusive"}) do
+    PetsTab:CreateToggle({
+        Name         = rarityName,
+        CurrentValue = false,
+        Flag         = "Rarity_" .. rarityName,
+        Callback     = function(v)
+            selectedRarities[rarityName] = v
+        end,
+    })
+end
+
+PetsTab:CreateSection("Pet Actions")
+
+PetsTab:CreateToggle({
+    Name         = "Auto Lock Pets (by rarity)",
+    CurrentValue = false,
+    Flag         = "AutoLockPets",
+    Callback     = function(v)
+        if v and not checkRemotes("Auto Lock Pets") then return end
+        State.lockPets = v
+        if v then
+            task.spawn(startLockPets)
+            safeNotify({
+                Title    = "Auto Lock Pets",
+                Content  = "Locking pets of selected rarities.",
+                Duration = 4,
+                Image    = 4483362458,
+            })
+        end
+    end,
+})
+
+PetsTab:CreateToggle({
+    Name         = "Auto Unlock Pets (by rarity)",
+    CurrentValue = false,
+    Flag         = "AutoUnlockPets",
+    Callback     = function(v)
+        if v and not checkRemotes("Auto Unlock Pets") then return end
+        State.unlockPets = v
+        if v then
+            task.spawn(startUnlockPets)
+            safeNotify({
+                Title    = "Auto Unlock Pets",
+                Content  = "Unlocking pets of selected rarities.",
+                Duration = 4,
+                Image    = 4483362458,
+            })
+        end
+    end,
+})
+
+PetsTab:CreateToggle({
+    Name         = "Auto Delete Pets (by rarity) — skips locked",
+    CurrentValue = false,
+    Flag         = "AutoDeletePets",
+    Callback     = function(v)
+        if v and not checkRemotes("Auto Delete Pets") then return end
+        State.deletePets = v
+        if v then
+            task.spawn(startDeletePets)
+            safeNotify({
+                Title    = "Auto Delete Pets",
+                Content  = "Deleting unlocked pets of selected rarities.",
+                Duration = 4,
+                Image    = 4483362458,
+            })
+        end
+    end,
+})
+
+PetsTab:CreateToggle({
+    Name         = "Auto Craft Pets (by rarity) — skips locked",
+    CurrentValue = false,
+    Flag         = "AutoCraftPets",
+    Callback     = function(v)
+        if v and not checkRemotes("Auto Craft Pets") then return end
+        State.craftPets = v
+        if v then
+            task.spawn(startCraftPets)
+            safeNotify({
+                Title    = "Auto Craft Pets",
+                Content  = "Crafting unlocked pets of selected rarities.",
+                Duration = 4,
+                Image    = 4483362458,
+            })
+        end
+    end,
+})
+
+-- ================================================
+-- UI — MISC TAB
+-- ================================================
+MiscTab:CreateSection("Rewards & Gifts")
+
+MiscTab:CreateToggle({
+    Name         = "Auto Claim Free Gifts",
+    CurrentValue = false,
+    Flag         = "AutoClaimFree",
+    Callback     = function(v)
+        if v and not checkRemotes("Auto Claim Free Gifts") then return end
+        State.claimFree = v
+        if v then
+            task.spawn(startClaimFreeGifts)
+            safeNotify({
+                Title    = "Auto Claim Free Gifts",
+                Content  = "Firing TimedRewardService in a loop.",
+                Duration = 4,
+                Image    = 4483362458,
+            })
+        end
+    end,
+})
+
+MiscTab:CreateToggle({
+    Name         = "Auto Claim Daily Gifts",
+    CurrentValue = false,
+    Flag         = "AutoClaimDaily",
+    Callback     = function(v)
+        if v and not checkRemotes("Auto Claim Daily Gifts") then return end
+        State.claimDaily = v
+        if v then
+            task.spawn(startClaimDailyGifts)
+            safeNotify({
+                Title    = "Auto Claim Daily Gifts",
+                Content  = "Firing DailyRewardService in a loop.",
+                Duration = 4,
+                Image    = 4483362458,
+            })
+        end
+    end,
+})
+
+MiscTab:CreateToggle({
+    Name         = "Auto Spin",
+    CurrentValue = false,
+    Flag         = "AutoSpin",
+    Callback     = function(v)
+        if v and not checkRemotes("Auto Spin") then return end
+        State.autoSpin = v
+        if v then
+            task.spawn(startAutoSpin)
+            safeNotify({
+                Title    = "Auto Spin",
+                Content  = "Spinning via SpinService in a loop.",
+                Duration = 4,
+                Image    = 4483362458,
+            })
+        end
+    end,
+})
+
+MiscTab:CreateSection("Notifications")
+
+MiscTab:CreateToggle({
+    Name         = "Hide Game Notifications",
+    CurrentValue = false,
+    Flag         = "HideGameNotifs",
+    Callback     = function(v)
+        task.spawn(function()
+            while v do
+                pcall(function()
+                    LocalPlayer.PlayerGui.Notification.Enabled = false
+                end)
+                task.wait(0.5)
+            end
+            pcall(function()
+                LocalPlayer.PlayerGui.Notification.Enabled = true
+            end)
+        end)
+    end,
+})
+
+-- ================================================
+-- UI — PREMIUM TAB
+-- ================================================
+local PREMIUM_KEYS = {
+    "MRC-PREM-1234",  -- replace with your real keys
+    "MRC-PREM-5678",
+    "MRC-PREM-9999",
+}
+local premiumUnlocked  = false
+local autoIndexing     = false
+local indexHatchType   = "Single (1x)"
+
+PremiumTab:CreateSection("Premium Access")
+
+PremiumTab:CreateInput({
+    Name                     = "Enter Premium Key",
+    PlaceholderText          = "MRC-PREM-XXXX",
+    RemoveTextAfterFocusLost = false,
+    Flag                     = "PremiumKeyInput",
+    Callback                 = function(inputVal)
+        local valid = false
+        for _, key in ipairs(PREMIUM_KEYS) do
+            if inputVal == key then valid = true; break end
+        end
+
+        if valid then
+            premiumUnlocked = true
+            Rayfield:Notify({
+                Title    = "⭐ Premium Unlocked!",
+                Content  = "Welcome! All premium features are now available.",
+                Duration = 6,
+                Image    = 4483362458,
+            })
+
+            -- Dynamically create premium features after key accepted
+            PremiumTab:CreateSection("Auto Index")
+
+            PremiumTab:CreateDropdown({
+                Name          = "Index Hatch Type",
+                Options       = {"Single (1x)", "Triple (3x)", "Octuple (8x)"},
+                CurrentOption = {"Single (1x)"},
+                Flag          = "PremIndexHatchType",
+                Callback      = function(v)
+                    indexHatchType = v[1]
+                end,
+            })
+
+            PremiumTab:CreateToggle({
+                Name         = "Auto Index (All Eggs, Worst → Best)",
+                CurrentValue = false,
+                Flag         = "PremAutoIndex",
+                Callback     = function(v)
+                    if v and not checkRemotes("Auto Index") then return end
+                    autoIndexing = v
+                    if v then
+                        cancelStatsRemoval()
+                        createStatsUI()
+                        safeNotify({
+                            Title    = "Auto Index Started",
+                            Content  = "Cycling all eggs worst → best, 30–60s each.",
+                            Duration = 5,
+                            Image    = 4483362458,
+                        })
+                        task.spawn(function()
+                            local fullList = {}
+                            for _, world in ipairs(worldOrder) do
+                                for _, egg in ipairs(EggData[world]) do
+                                    table.insert(fullList, { world = world, egg = egg })
+                                end
+                            end
+
+                            local totalEggs = #fullList
+
+                            for idx, entry in ipairs(fullList) do
+                                if not autoIndexing then break end
+
+                                local eggName   = entry.egg
+                                local worldName = entry.world
+                                local duration  = math.random(30, 60)
+                                local elapsed   = 0
+                                local interval  = 0.15 + math.random(0, 8) / 100
+
+                                safeNotify({
+                                    Title    = "Index — Egg " .. idx .. "/" .. totalEggs,
+                                    Content  = worldName .. " — " .. eggName .. " (" .. duration .. "s)",
+                                    Duration = 5,
+                                    Image    = 4483362458,
+                                })
+
+                                while autoIndexing and elapsed < duration do
+                                    if EggRF then
+                                        local count = 1
+                                        local ok, result = pcall(function()
+                                            if indexHatchType == "Single (1x)" then
+                                                count = 1
+                                                return EggRF:InvokeServer(eggName, {}, false)
+                                            elseif indexHatchType == "Triple (3x)" then
+                                                count = 3
+                                                return EggRF:InvokeServer(eggName, {}, true, false)
+                                            else
+                                                count = 8
+                                                return EggRF:InvokeServer(eggName, {}, false, true)
+                                            end
+                                        end)
+                                        if ok and result then
+                                            Stats.eggs += count
+                                            updateStatLabel("eggs")
+                                            checkMilestone("eggs", Stats.eggs)
+                                        end
+                                    end
+                                    task.wait(interval)
+                                    elapsed += interval
+                                end
+                            end
+
+                            if autoIndexing then
+                                autoIndexing = false
+                                Rayfield:Notify({
+                                    Title    = "Auto Index Complete",
+                                    Content  = "All eggs cycled! Toggle is now off.",
+                                    Duration = 6,
+                                    Image    = 4483362458,
+                                })
+                            end
+                            scheduleStatsRemoval()
+                        end)
+                    else
+                        scheduleStatsRemoval()
+                    end
+                end,
+            })
+
+        else
+            premiumUnlocked = false
+            Rayfield:Notify({
+                Title    = "❌ Invalid Key",
+                Content  = "That key is incorrect. Join discord.gg/YV3GjGw3PY for a key.",
+                Duration = 6,
+                Image    = 4483362458,
+            })
+        end
+    end,
+})
+
+PremiumTab:CreateLabel("🔒  Enter your key above to unlock Premium features.")
+PremiumTab:CreateLabel("📢  Get a key at discord.gg/YV3GjGw3PY")
