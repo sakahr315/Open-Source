@@ -1,0 +1,54 @@
+-- // ANTI AFK (ALWAYS ON)
+local vu = game:GetService("VirtualUser")
+game:GetService("Players").LocalPlayer.Idled:Connect(function()
+    vu:CaptureController()
+    vu:ClickButton2(Vector2.new(0,0))
+end)
+
+-- // LOAD RAYFIELD
+local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+
+-- // WINDOW
+local Window = Rayfield:CreateWindow({
+    Name = "Auto Hatch Script",
+    LoadingTitle = "Loading...",
+    LoadingSubtitle = "by you",
+    ConfigurationSaving = {
+        Enabled = false
+    }
+})
+
+-- // TAB
+local Tab = Window:CreateTab("Main", 4483362458)
+
+-- // VARIABLES
+local autoHatch = false
+
+-- // REMOTE (⚠️ index may change)
+local Event = game:GetService("ReplicatedStorage"):GetChildren()[21]
+
+-- // AUTO HATCH LOOP
+task.spawn(function()
+    while true do
+        if autoHatch then
+            pcall(function()
+                Event:InvokeServer(
+                    "Cosmic Egg",
+                    true,
+                    false,
+                    false
+                )
+            end)
+        end
+        task.wait(0.14) -- ~7 times/sec
+    end
+end)
+
+-- // TOGGLE
+Tab:CreateToggle({
+    Name = "Auto Hatch Best Egg",
+    CurrentValue = false,
+    Callback = function(Value)
+        autoHatch = Value
+    end
+})
