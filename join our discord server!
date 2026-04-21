@@ -1,6 +1,26 @@
 --// Load Kavo UI Library
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"))()
 
+--// Simple Loading Screen (no steps)
+local function LoadingIntro()
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "LoadingScreen"
+    screenGui.Parent = game:GetService("CoreGui")
+
+    local text = Instance.new("TextLabel")
+    text.Size = UDim2.new(1,0,1,0)
+    text.BackgroundTransparency = 1
+    text.TextColor3 = Color3.fromRGB(255,255,255)
+    text.Font = Enum.Font.GothamBold
+    text.TextScaled = true
+    text.Text = "MRC Scripts\nLoading..."
+    text.Parent = screenGui
+
+    task.wait(2)
+
+    screenGui:Destroy()
+end
+
 LoadingIntro()
 
 --// Create Window
@@ -10,7 +30,7 @@ local Window = Library.CreateLib("Access Required - MRC Scripts", "DarkTheme")
 local Tab = Window:NewTab("Access")
 local Section = Tab:NewSection("Discord Required")
 
---// Info Labels
+--// Labels
 Section:NewLabel("This script is locked behind Discord access")
 Section:NewLabel("Join our server for keyless access")
 
@@ -36,9 +56,8 @@ Section:NewButton("Join Discord Server", "Opens Discord & copies invite", functi
         })
     end)
 
-    -- fallback open (works in some executors)
+    -- fallback
     pcall(function()
-        setclipboard(invite)
         game:GetService("GuiService"):OpenBrowserWindow(invite)
     end)
 end)
