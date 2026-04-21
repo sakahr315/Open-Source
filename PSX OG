@@ -1,54 +1,318 @@
--- // ANTI AFK (ALWAYS ON)
-local vu = game:GetService("VirtualUser")
-game:GetService("Players").LocalPlayer.Idled:Connect(function()
-    vu:CaptureController()
-    vu:ClickButton2(Vector2.new(0,0))
+-- MRC's PSX Hub
+-- Pet Simulator X | Rayfield UI
+
+local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+local RS = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local lp = Players.LocalPlayer
+
+-- ── Remotes ─────────────────────────────────────────────────────────
+local RSChildren = RS:GetChildren()
+local JoinCoinRemote = RSChildren[22]
+local FarmCoinRemote = RSChildren[24]
+
+-- Hatch Remote
+local HatchRemote = RSChildren[21]
+
+-- ── Library ──────────────────────────────────────────────────────────
+local Library
+pcall(function()
+    Library = require(RS:WaitForChild("Framework"):WaitForChild("Library"))
 end)
 
--- // LOAD RAYFIELD
-local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+-- ── Configs ──────────────────────────────────────────────────────────
+local Config = {
+    AutoFarm  = false,
+    FarmRange = 200,
+    MaxPets   = 20,
+}
 
--- // WINDOW
-local Window = Rayfield:CreateWindow({
-    Name = "Auto Hatch Script",
-    LoadingTitle = "Loading...",
-    LoadingSubtitle = "by you",
-    ConfigurationSaving = {
-        Enabled = false
-    }
-})
+local EnchantConfig = {
+    AutoEnchant    = false,
+    SelectedPowers = {},
+    DelayBetween   = 3,
+}
 
--- // TAB
-local Tab = Window:CreateTab("Main", 4483362458)
+local HatchConfig = {
+    AutoHatch   = false,
+    SelectedEgg = "Dark Tech Egg",
+}
 
--- // VARIABLES
-local autoHatch = false
+-- ── Teleport Helper ─────────────────────────────────────────────────
+local function teleportToEnchant()
+    local char = lp.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
 
--- // REMOTE (⚠️ index may change)
-local Event = game:GetService("ReplicatedStorage"):GetChildren()[21]
+    local pad = workspace:FindFirstChild("__MAP")
+        and workspace.__MAP:FindFirstChild("Interactive")
+        and workspace.__MAP.Interactive:FindFirstChild("Enchanting")
+        and workspace.__MAP.Interactive.Enchanting:FindFirstChild("Pad")
 
--- // AUTO HATCH LOOP
+    if pad then
+        char.HumanoidRootPart.CFrame = pad.CFrame + Vector3.new(0, 3, 0)
+    end
+end
+
+-- ── Farm Helpers ─────────────────────────────────────────────────────
+local function getMyPetUIDs()
+    local uids = {}
+    local petsFolder = workspace:FindFirstChild("__THINGS") and workspace.__THINGS:FindFirstChild("Pets")
+    if not petsFolder then return uids end
+    local char = lp.Character
+    if not char or not char.PrimaryPart then return uids end
+
+    for _, part in ipairs(petsFolder:GetChildren()) do
+        if part.Name:sub(1,2) == "id" and #part.Name > 10 then
+            if (part.CFrame.Position - char.PrimaryPart.CFrame.Position).Magnitude < 60 then
+                table.insert(uids, part.Name)
+                if #uids >= Config.MaxPets then break end
+            end
+        end
+    end
+    return uids
+end
+
+local function getActiveCoins()
+    local coins = {}
+    local char = lp.Character
+    local coinsFolder = workspace:FindFirstChild("__THINGS") and workspace.__THINGS:FindFirstChild("Coins")
+    if not coinsFolder then return coins end
+
+    for _, zone in ipairs(coinsFolder:GetChildren()) do
+        local health = zone:GetAttribute("Health")
+        local landed = zone:GetAttribute("HasLanded")
+        local id     = zone:GetAttribute("ID")
+
+        if id and health and health > 0 and landed == true then
+            local coinPart = zone:FindFirstChild("POS") or zone:FindFirstChild("Coin")
+            if coinPart and char and char.PrimaryPart then
+                local dist = (coinPart.CFrame.Position - char.PrimaryPart.CFrame.Position).Magnitude
+                if dist <= Config.FarmRange then
+                    table.insert(coins, { id = id, name = zone.Name })
+                end
+            end
+        end
+    end
+    return coins
+end
+
+-- ── Enchant Helpers ──────────────────────────────────────────────────
+local function getEquippedPetUIDs()
+    if not Library then return {} end
+    local save = Library.Save.Get()
+    if not save then return {} end
+
+    local uids = {}
+    for _, pet in ipairs(save.Pets or {}) do
+        if Library.Shared.HasPetEquipped(save, pet) then
+            table.insert(uids, pet.uid)
+        end
+    end
+    return uids
+end
+
+local function petHasDesiredEnchant(petData)
+    if not petData or not petData.powers then return false end
+    for _, power in ipairs(petData.powers) do
+        local powerDir = Library.Directory.Powers[power[1]]
+        if powerDir then
+            local tier = powerDir.tiers[power[2]]
+            if tier and EnchantConfig.SelectedPowers[tier.title] then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function getAllEnchantTitles()
+    if not Library then return {} end
+    local titles = {}
+
+    for _, power in pairs(Library.Directory.Powers) do
+        if power.canDrop then
+            for _, tier in ipairs(power.tiers) do
+                table.insert(titles, tier.title)
+            end
+        end
+    end
+
+    table.sort(titles)
+    return titles
+end
+
+-- ── Farm Loop ────────────────────────────────────────────────────────
 task.spawn(function()
     while true do
-        if autoHatch then
+        if Config.AutoFarm then
+            local petUIDs = getMyPetUIDs()
+            if #petUIDs > 0 then
+                local coins = getActiveCoins()
+                for _, coin in ipairs(coins) do
+                    pcall(function()
+                        JoinCoinRemote:InvokeServer(coin.id, petUIDs)
+                    end)
+                    for _, uid in ipairs(petUIDs) do
+                        pcall(function()
+                            FarmCoinRemote:FireServer(coin.id, uid)
+                        end)
+                    end
+                end
+            end
+        end
+        task.wait(0)
+    end
+end)
+
+-- ── Enchant Loop ─────────────────────────────────────────────────────
+task.spawn(function()
+    while true do
+        if EnchantConfig.AutoEnchant and Library then
+            local uids = getEquippedPetUIDs()
+            local toEnchant = {}
+
+            for _, uid in ipairs(uids) do
+                local petData = Library.PetCmds.Get(uid)
+                if petData and not petHasDesiredEnchant(petData) then
+                    table.insert(toEnchant, uid)
+                    if #toEnchant >= 3 then break end
+                end
+            end
+
+            if #toEnchant > 0 then
+                local autoMode = next(EnchantConfig.SelectedPowers) ~= nil
+                pcall(function()
+                    Library.Network.Invoke("Enchant Pets", toEnchant, autoMode)
+                end)
+            else
+                EnchantConfig.AutoEnchant = false
+                Rayfield:Notify({
+                    Title = "Auto Enchant",
+                    Content = "Done!",
+                    Duration = 3,
+                })
+            end
+        end
+        task.wait(EnchantConfig.DelayBetween)
+    end
+end)
+
+-- ── Hatch Loop ───────────────────────────────────────────────────────
+task.spawn(function()
+    while true do
+        if HatchConfig.AutoHatch then
             pcall(function()
-                Event:InvokeServer(
-                    "Cosmic Egg",
+                HatchRemote:InvokeServer(
+                    HatchConfig.SelectedEgg,
                     true,
-                    false,
                     false
                 )
             end)
         end
-        task.wait(0.14) -- ~7 times/sec
+        task.wait(0.2)
     end
 end)
 
--- // TOGGLE
-Tab:CreateToggle({
-    Name = "Auto Hatch Best Egg",
+-- ── UI ──────────────────────────────────────────────────────────────
+local Window = Rayfield:CreateWindow({
+    Name = "MRC's PSX Hub",
+})
+
+local FarmTab    = Window:CreateTab("⚡ Farm", 4483362458)
+local EnchantTab = Window:CreateTab("✨ Enchant", 4483362458)
+local HatchTab   = Window:CreateTab("🥚 Hatch", 4483362458)
+local DebugTab   = Window:CreateTab("🔍 Debug", 4483362458)
+
+-- ── Farm UI ─────────────────────────────────────────────────────────
+FarmTab:CreateSection("Auto Farm")
+
+FarmTab:CreateToggle({
+    Name = "Enable Auto Farm",
     CurrentValue = false,
-    Callback = function(Value)
-        autoHatch = Value
+    Callback = function(v)
+        Config.AutoFarm = v
+    end,
+})
+
+FarmTab:CreateSlider({
+    Name = "Range",
+    Range = {10, 500},
+    Increment = 10,
+    CurrentValue = 200,
+    Callback = function(v)
+        Config.FarmRange = v
+    end,
+})
+
+FarmTab:CreateSlider({
+    Name = "Max Pets",
+    Range = {1, 50},
+    Increment = 1,
+    CurrentValue = 20,
+    Callback = function(v)
+        Config.MaxPets = v
+    end,
+})
+
+-- ── Enchant UI ──────────────────────────────────────────────────────
+EnchantTab:CreateSection("Auto Enchant")
+
+EnchantTab:CreateToggle({
+    Name = "Enable Auto Enchant",
+    CurrentValue = false,
+    Callback = function(v)
+        EnchantConfig.AutoEnchant = v
+        if v then teleportToEnchant() end
+    end,
+})
+
+EnchantTab:CreateSection("Desired Enchants")
+
+task.spawn(function()
+    task.wait(1)
+    if not Library then return end
+
+    for _, title in ipairs(getAllEnchantTitles()) do
+        EnchantTab:CreateToggle({
+            Name = title,
+            CurrentValue = false,
+            Callback = function(v)
+                EnchantConfig.SelectedPowers[title] = v or nil
+            end,
+        })
     end
+end)
+
+-- ── Hatch UI ────────────────────────────────────────────────────────
+HatchTab:CreateToggle({
+    Name = "Auto Hatch",
+    CurrentValue = false,
+    Callback = function(v)
+        HatchConfig.AutoHatch = v
+    end,
+})
+
+HatchTab:CreateDropdown({
+    Name = "Select Egg",
+    Options = {
+        "Cracked Egg","Spotted Egg","Grass Egg","Wood Egg","Cactus Egg",
+        "Rock Egg","Geode Egg","Snow Egg","Icicle Egg","Ice Egg",
+        "Mushroom Doodle Egg","Farm Doodle Egg","Flower Doodle Egg",
+        "Gem Doodle Egg","Snowy Doodle Egg","Safari Doodle Egg",
+        "Tropical Doodle Egg","Beachball Egg","Coconut Egg",
+        "Samurai Egg","Kawaii Egg","Tokyo Alley Egg",
+        "Tech Egg","Dark Tech Egg","Chemical Egg",
+        "Alien Egg","Martian Egg","Hacker Egg",
+        "Steampunk Egg","Empyrean Egg",
+    },
+    CurrentOption = {"Dark Tech Egg"},
+    Callback = function(opt)
+        HatchConfig.SelectedEgg = opt[1]
+    end,
+})
+
+Rayfield:Notify({
+    Title = "MRC Hub",
+    Content = "Loaded!",
+    Duration = 4,
 })
