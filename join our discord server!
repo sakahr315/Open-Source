@@ -1,0 +1,44 @@
+--// Load Kavo UI Library
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"))()
+
+LoadingIntro()
+
+--// Create Window
+local Window = Library.CreateLib("Access Required - MRC Scripts", "DarkTheme")
+
+--// Tab
+local Tab = Window:NewTab("Access")
+local Section = Tab:NewSection("Discord Required")
+
+--// Info Labels
+Section:NewLabel("This script is locked behind Discord access")
+Section:NewLabel("Join our server for keyless access")
+
+--// Discord Button
+Section:NewButton("Join Discord Server", "Opens Discord & copies invite", function()
+    local invite = "https://discord.com/invite/YV3GjGw3PY"
+
+    -- copy invite
+    setclipboard(invite)
+
+    -- notification
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "Discord Invite Ready",
+        Text = "Link copied + opening Discord",
+        Duration = 5
+    })
+
+    -- open link
+    pcall(function()
+        syn.request({
+            Url = invite,
+            Method = "GET"
+        })
+    end)
+
+    -- fallback open (works in some executors)
+    pcall(function()
+        setclipboard(invite)
+        game:GetService("GuiService"):OpenBrowserWindow(invite)
+    end)
+end)
