@@ -1,6 +1,19 @@
 -- MRC's PSX Hub
 -- Pet Simulator X | Rayfield UI
 
+
+-- ── ANTI Afk ─────────────────────────────────────────────────────────
+local Players = game:GetService("Players")
+local VirtualUser = game:GetService("VirtualUser")
+
+local player = Players.LocalPlayer
+
+player.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new(0, 0))
+end)
+
+
 local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 local RS = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
