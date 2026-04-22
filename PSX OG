@@ -48,7 +48,7 @@ local EnchantConfig = {
 
 local HatchConfig = {
     AutoHatch   = false,
-    SelectedEgg = "Dark Tech Egg",
+    SelectedEgg = "Mechanical Egg", -- updated
 }
 
 -- ── Teleport Helper ─────────────────────────────────────────────────
@@ -226,6 +226,61 @@ task.spawn(function()
     end
 end)
 
+-- ── Optimization ─────────────────────────────────────────────────────
+local OptConfig = { Enabled = false }
+
+local Lighting = game:GetService("Lighting")
+
+local function setOptimization(enabled)
+    -- Lighting effects
+    for _, fx in ipairs(Lighting:GetChildren()) do
+        if fx.Name == "__WORLDFX" then
+            if fx:IsA("BloomEffect") or fx:IsA("DepthOfFieldEffect")
+            or fx:IsA("ColorCorrectionEffect") or fx:IsA("Atmosphere") then
+                fx.Enabled = not enabled
+            end
+        end
+    end
+
+    -- Global shadows + render quality
+    Lighting.GlobalShadows = not enabled
+    if enabled then
+        settings().Rendering.QualityLevel = 1
+    else
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic
+    end
+
+    -- Kill/restore particles across workspace
+    local targets = {
+        workspace:FindFirstChild("__THINGS"),
+        workspace:FindFirstChild("__MAP"),
+    }
+    for _, root in ipairs(targets) do
+        if root then
+            for _, desc in ipairs(root:GetDescendants()) do
+                if desc:IsA("ParticleEmitter") or desc:IsA("Trail")
+                or desc:IsA("Beam") or desc:IsA("Fire")
+                or desc:IsA("Smoke") or desc:IsA("Sparkles") then
+                    desc.Enabled = not enabled
+                end
+            end
+        end
+    end
+
+    -- Kill egg particles in workspace root
+    for _, obj in ipairs(workspace:GetChildren()) do
+        if obj.Name == "Egg" then
+            for _, desc in ipairs(obj:GetDescendants()) do
+                if desc:IsA("ParticleEmitter") or desc:IsA("Trail") then
+                    desc.Enabled = not enabled
+                end
+            end
+        end
+    end
+end
+
+
+
 -- ── UI ──────────────────────────────────────────────────────────────
 local Window = Rayfield:CreateWindow({
     Name = "MRC's PSX Hub",
@@ -235,6 +290,26 @@ local FarmTab    = Window:CreateTab("⚡ Farm", 4483362458)
 local EnchantTab = Window:CreateTab("✨ Enchant", 4483362458)
 local HatchTab   = Window:CreateTab("🥚 Hatch", 4483362458)
 local DebugTab   = Window:CreateTab("🔍 Debug", 4483362458)
+
+local OptTab = Window:CreateTab("⚡ Optimize", 4483362458)
+OptTab:CreateSection("Performance")
+
+OptTab:CreateToggle({
+    Name = "Optimization Mode",
+    CurrentValue = false,
+    Callback = function(v)
+        OptConfig.Enabled = v
+        setOptimization(v)
+        Rayfield:Notify({
+            Title = "Optimization",
+            Content = v and "Enabled — lag reduced." or "Disabled — visuals restored.",
+            Duration = 3,
+        })
+    end,
+})
+
+
+
 
 -- ── Farm UI ─────────────────────────────────────────────────────────
 FarmTab:CreateSection("Auto Farm")
@@ -317,8 +392,9 @@ HatchTab:CreateDropdown({
         "Tech Egg","Dark Tech Egg","Chemical Egg",
         "Alien Egg","Martian Egg","Hacker Egg",
         "Steampunk Egg","Empyrean Egg",
+        "Mechanical Egg", -- new
     },
-    CurrentOption = {"Dark Tech Egg"},
+    CurrentOption = {"Mechanical Egg"}, -- updated
     Callback = function(opt)
         HatchConfig.SelectedEgg = opt[1]
     end,
