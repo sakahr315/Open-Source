@@ -392,9 +392,10 @@ HatchTab:CreateDropdown({
         "Tech Egg","Dark Tech Egg","Chemical Egg",
         "Alien Egg","Martian Egg","Hacker Egg",
         "Steampunk Egg","Empyrean Egg",
-        "Mechanical Egg", -- new
+        "Mechanical Egg",
+        "Cursed Egg", -- new
     },
-    CurrentOption = {"Mechanical Egg"}, -- updated
+    CurrentOption = {"Mechanical Egg"},
     Callback = function(opt)
         HatchConfig.SelectedEgg = opt[1]
     end,
