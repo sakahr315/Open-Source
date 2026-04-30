@@ -1,0 +1,94 @@
+--// Rayfield Load
+local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+
+local Window = Rayfield:CreateWindow({
+    Name = "mrc Hub",
+    LoadingTitle = "mrc Hub",
+    LoadingSubtitle = "by mrc (mrc__s)",
+    ConfigurationSaving = {
+        Enabled = false
+    }
+})
+
+--// Main Tab
+local MainTab = Window:CreateTab("Main", 4483362458)
+
+--// Variables
+local AutoClick = false
+local AutoUpgrade = false
+local AutoRebirth = false
+
+--// Auto Click
+MainTab:CreateToggle({
+    Name = "Auto Click",
+    CurrentValue = false,
+    Flag = "AutoClickToggle",
+    Callback = function(Value)
+        AutoClick = Value
+
+        if AutoClick then
+            task.spawn(function()
+                while AutoClick do
+                    pcall(function()
+                        game:GetService("ReplicatedStorage")
+                            .Shared
+                            .Remotes
+                            .Click
+                            :FireServer()
+                    end)
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end
+})
+
+--// Auto Upgrade Click Multiplier
+MainTab:CreateToggle({
+    Name = "Auto Upgrade Click Multiplier",
+    CurrentValue = false,
+    Flag = "AutoUpgradeToggle",
+    Callback = function(Value)
+        AutoUpgrade = Value
+
+        if AutoUpgrade then
+            task.spawn(function()
+                while AutoUpgrade do
+                    pcall(function()
+                        game:GetService("ReplicatedStorage")
+                            .Shared
+                            .Remotes
+                            .BuyUpgrade
+                            :FireServer("ClickMultiplier")
+                    end)
+                    task.wait(0.5)
+                end
+            end)
+        end
+    end
+})
+
+--// Auto Rebirth (5s delay)
+MainTab:CreateToggle({
+    Name = "Auto Rebirth (5s)",
+    CurrentValue = false,
+    Flag = "AutoRebirthToggle",
+    Callback = function(Value)
+        AutoRebirth = Value
+
+        if AutoRebirth then
+            task.spawn(function()
+                while AutoRebirth do
+                    pcall(function()
+                        game:GetService("ReplicatedStorage")
+                            .Shared
+                            .Remotes
+                            .RequestRebirth
+                            :FireServer()
+                    end)
+                    task.wait(5) -- fixed delay
+                end
+            end)
+        end
+    end
+})
