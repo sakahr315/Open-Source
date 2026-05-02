@@ -48,8 +48,7 @@ pcall(function()
         ClickDelay = 0.05,
 
         MerchantSlots       = 5,
-        MerchantSlotDelay   = 5,    -- seconds between each slot purchase
-        MerchantRefreshWait = 300,  -- 5 minutes between full buy cycles
+        MerchantSlotDelay = 2,  -- seconds between each slot
     }
 
     -- ── State ─────────────────────────────────────────────────────────────
@@ -104,41 +103,25 @@ pcall(function()
 
     -- ── Auto Buy Fish Merchant ────────────────────────────────────────────
     local function startMerchant()
-        merchantRunning = true
-        merchantStats.bought = 0
-        merchantStats.cycles = 0
+    merchantRunning = true
+    merchantStats.bought = 0
+    merchantStats.cycles = 0
 
-        merchantThread = task.spawn(function()
-            while merchantRunning do
-                -- Buy all 5 slots with a delay between each
-                for slot = 1, CONFIG.MerchantSlots do
-                    if not merchantRunning then break end
-                    pcall(function()
-                        BuyItemRF:InvokeServer("Fish Merchant", slot)
-                    end)
-                    print(string.format("[MRC Merchant] Bought slot %d", slot))
-                    merchantStats.bought += 1
-                    task.wait(CONFIG.MerchantSlotDelay)
-                end
-
-                merchantStats.cycles += 1
-                print(string.format("[MRC Merchant] Cycle %d done — waiting 5 mins", merchantStats.cycles))
-
-                Rayfield:Notify({
-                    Title   = "Fish Merchant",
-                    Content = string.format("Cycle %d complete — refreshing in 5 mins", merchantStats.cycles),
-                    Duration = 5,
-                })
-
-                -- Wait for merchant to refresh
-                local waited = 0
-                while merchantRunning and waited < CONFIG.MerchantRefreshWait do
-                    task.wait(1)
-                    waited += 1
-                end
+    merchantThread = task.spawn(function()
+        while merchantRunning do
+            for slot = 1, CONFIG.MerchantSlots do
+                if not merchantRunning then break end
+                pcall(function()
+                    BuyItemRF:InvokeServer("Fish Merchant", slot)
+                end)
+                print(string.format("[MRC Merchant] Bought slot %d", slot))
+                merchantStats.bought += 1
+                task.wait(CONFIG.MerchantSlotDelay)
             end
-        end)
-    end
+            merchantStats.cycles += 1
+        end
+    end)
+end
 
     local function stopMerchant()
         merchantRunning = false
@@ -191,7 +174,7 @@ pcall(function()
                 startMerchant()
                 Rayfield:Notify({
                     Title    = "Fish Merchant",
-                    Content  = "Started — buying all 5 slots every 5 mins",
+                    Content  = "Started — buying all 5 slots continuously",
                     Duration = 4,
                 })
             else
