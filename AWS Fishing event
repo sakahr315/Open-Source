@@ -13,10 +13,10 @@ pcall(function()
     ))()
 
     local Window = Rayfield:CreateWindow({
-        Name             = "MRC Fish Hub",
+        Name             = "MRC Event | discord.gg/YV3GjGw3PY",
         Icon             = 0,
-        LoadingTitle     = "MRC Fish Hub",
-        LoadingSubtitle  = "by MRC",
+        LoadingTitle     = "MRC Event",
+        LoadingSubtitle  = "discord.gg/YV3GjGw3PY",
         Theme            = "Default",
         DisableRayfieldPrompts = false,
         DisableBuildWarnings   = false,
@@ -34,24 +34,32 @@ pcall(function()
     local Mouse   = LP:GetMouse()
 
     -- ── Remotes ───────────────────────────────────────────────────────────
-    local KnitSvc = RS.Packages.Knit.Services
-    local StartRF = KnitSvc.FishingService.RF.StartFishing
-    local ClickRF = KnitSvc.FishingService.RF.Click
+    local KnitSvc   = RS.Packages.Knit.Services
+    local StartRF   = KnitSvc.FishingService.RF.StartFishing
+    local ClickRF   = KnitSvc.FishingService.RF.Click
+    local BuyItemRF = KnitSvc.LimitedMerchantService.RF.BuyItem
 
     -- ── Config ────────────────────────────────────────────────────────────
     local CONFIG = {
-        Zone      = "FishingVillage",
-        CastPos   = Vector3.new(-8391.03125, 353.77221679688, 5659.7646484375),
-        StandPos  = Vector3.new(-8388.0, 354.0, 5662.0),
-        CastDelay = 3.0,
+        Zone       = "FishingVillage",
+        CastPos    = Vector3.new(-8391.03125, 353.77221679688, 5659.7646484375),
+        StandPos   = Vector3.new(-8388.0, 354.0, 5662.0),
+        CastDelay  = 3.0,
         ClickDelay = 0.05,
+
+        MerchantSlots       = 5,
+        MerchantSlotDelay   = 5,    -- seconds between each slot purchase
+        MerchantRefreshWait = 300,  -- 5 minutes between full buy cycles
     }
 
     -- ── State ─────────────────────────────────────────────────────────────
-    local running     = false
-    local clickThread = nil
-    local castThread  = nil
-    local stats       = { casts = 0, startTime = 0 }
+    local fishRunning     = false
+    local merchantRunning = false
+    local clickThread     = nil
+    local castThread      = nil
+    local merchantThread  = nil
+    local fishStats       = { casts = 0 }
+    local merchantStats   = { bought = 0, cycles = 0 }
 
     -- ── Helpers ───────────────────────────────────────────────────────────
     local function teleportToSpot()
@@ -61,14 +69,13 @@ pcall(function()
         end
     end
 
-    local function startLoops()
-        running = true
-        stats.casts = 0
-        stats.startTime = tick()
+    -- ── Auto Fish ─────────────────────────────────────────────────────────
+    local function startFish()
+        fishRunning = true
+        fishStats.casts = 0
 
-        -- Always-on click loop
         clickThread = task.spawn(function()
-            while running do
+            while fishRunning do
                 pcall(function()
                     ClickRF:InvokeServer(Mouse.Hit.Position)
                 end)
@@ -76,34 +83,77 @@ pcall(function()
             end
         end)
 
-        -- Auto cast loop
         castThread = task.spawn(function()
-            while running do
+            while fishRunning do
                 teleportToSpot()
                 task.wait(0.3)
                 pcall(function()
                     StartRF:InvokeServer(CONFIG.Zone, CONFIG.CastPos)
                 end)
-                stats.casts += 1
+                fishStats.casts += 1
                 task.wait(CONFIG.CastDelay)
             end
         end)
     end
 
-    local function stopLoops()
-        running = false
+    local function stopFish()
+        fishRunning = false
         if clickThread then task.cancel(clickThread) clickThread = nil end
         if castThread  then task.cancel(castThread)  castThread  = nil end
     end
 
+    -- ── Auto Buy Fish Merchant ────────────────────────────────────────────
+    local function startMerchant()
+        merchantRunning = true
+        merchantStats.bought = 0
+        merchantStats.cycles = 0
+
+        merchantThread = task.spawn(function()
+            while merchantRunning do
+                -- Buy all 5 slots with a delay between each
+                for slot = 1, CONFIG.MerchantSlots do
+                    if not merchantRunning then break end
+                    pcall(function()
+                        BuyItemRF:InvokeServer("Fish Merchant", slot)
+                    end)
+                    print(string.format("[MRC Merchant] Bought slot %d", slot))
+                    merchantStats.bought += 1
+                    task.wait(CONFIG.MerchantSlotDelay)
+                end
+
+                merchantStats.cycles += 1
+                print(string.format("[MRC Merchant] Cycle %d done — waiting 5 mins", merchantStats.cycles))
+
+                Rayfield:Notify({
+                    Title   = "Fish Merchant",
+                    Content = string.format("Cycle %d complete — refreshing in 5 mins", merchantStats.cycles),
+                    Duration = 5,
+                })
+
+                -- Wait for merchant to refresh
+                local waited = 0
+                while merchantRunning and waited < CONFIG.MerchantRefreshWait do
+                    task.wait(1)
+                    waited += 1
+                end
+            end
+        end)
+    end
+
+    local function stopMerchant()
+        merchantRunning = false
+        if merchantThread then task.cancel(merchantThread) merchantThread = nil end
+    end
+
     -- ── Cleanup ───────────────────────────────────────────────────────────
     _G.MRCFishCleanup = function()
-        stopLoops()
+        stopFish()
+        stopMerchant()
         _G.MRCFishLoaded = false
         Rayfield:Destroy()
     end
 
-    -- ── UI ────────────────────────────────────────────────────────────────
+    -- ── UI: Auto Fish ─────────────────────────────────────────────────────
     Tab:CreateSection("Auto Fish")
 
     Tab:CreateToggle({
@@ -112,18 +162,44 @@ pcall(function()
         Flag         = "AutoFish",
         Callback     = function(state)
             if state then
-                startLoops()
+                startFish()
                 Rayfield:Notify({
                     Title    = "Auto Fish",
                     Content  = "Started — casting at FishingVillage",
                     Duration = 4,
                 })
             else
-                stopLoops()
+                stopFish()
                 Rayfield:Notify({
                     Title    = "Auto Fish",
-                    Content  = string.format("Stopped — %d casts this session", stats.casts),
+                    Content  = string.format("Stopped — %d casts this session", fishStats.casts),
                     Duration = 4,
+                })
+            end
+        end,
+    })
+
+    -- ── UI: Fish Merchant ─────────────────────────────────────────────────
+    Tab:CreateSection("Fish Merchant")
+
+    Tab:CreateToggle({
+        Name         = "Auto Buy Fish Merchant",
+        CurrentValue = false,
+        Flag         = "AutoMerchant",
+        Callback     = function(state)
+            if state then
+                startMerchant()
+                Rayfield:Notify({
+                    Title    = "Fish Merchant",
+                    Content  = "Started — buying all 5 slots every 5 mins",
+                    Duration = 4,
+                })
+            else
+                stopMerchant()
+                Rayfield:Notify({
+                    Title    = "Fish Merchant",
+                    Content  = string.format("Stopped — %d items bought over %d cycles", merchantStats.bought, merchantStats.cycles),
+                    Duration = 5,
                 })
             end
         end,
