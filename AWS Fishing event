@@ -1,0 +1,132 @@
+pcall(function()
+
+    -- ── Re-execution guard ────────────────────────────────────────────────
+    if _G.MRCFishLoaded then
+        if _G.MRCFishCleanup then _G.MRCFishCleanup() end
+        task.wait(0.5)
+    end
+    _G.MRCFishLoaded = true
+
+    -- ── Rayfield ──────────────────────────────────────────────────────────
+    local Rayfield = loadstring(game:HttpGet(
+        "https://sirius.menu/rayfield"
+    ))()
+
+    local Window = Rayfield:CreateWindow({
+        Name             = "MRC Fish Hub",
+        Icon             = 0,
+        LoadingTitle     = "MRC Fish Hub",
+        LoadingSubtitle  = "by MRC",
+        Theme            = "Default",
+        DisableRayfieldPrompts = false,
+        DisableBuildWarnings   = false,
+        ConfigurationSaving = {
+            Enabled = false,
+        },
+    })
+
+    local Tab = Window:CreateTab("Fishing", 4483362458)
+
+    -- ── Services ──────────────────────────────────────────────────────────
+    local RS      = game:GetService("ReplicatedStorage")
+    local Players = game:GetService("Players")
+    local LP      = Players.LocalPlayer
+    local Mouse   = LP:GetMouse()
+
+    -- ── Remotes ───────────────────────────────────────────────────────────
+    local KnitSvc = RS.Packages.Knit.Services
+    local StartRF = KnitSvc.FishingService.RF.StartFishing
+    local ClickRF = KnitSvc.FishingService.RF.Click
+
+    -- ── Config ────────────────────────────────────────────────────────────
+    local CONFIG = {
+        Zone      = "FishingVillage",
+        CastPos   = Vector3.new(-8391.03125, 353.77221679688, 5659.7646484375),
+        StandPos  = Vector3.new(-8388.0, 354.0, 5662.0),
+        CastDelay = 3.0,
+        ClickDelay = 0.05,
+    }
+
+    -- ── State ─────────────────────────────────────────────────────────────
+    local running     = false
+    local clickThread = nil
+    local castThread  = nil
+    local stats       = { casts = 0, startTime = 0 }
+
+    -- ── Helpers ───────────────────────────────────────────────────────────
+    local function teleportToSpot()
+        local char = LP.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            char.HumanoidRootPart.CFrame = CFrame.new(CONFIG.StandPos)
+        end
+    end
+
+    local function startLoops()
+        running = true
+        stats.casts = 0
+        stats.startTime = tick()
+
+        -- Always-on click loop
+        clickThread = task.spawn(function()
+            while running do
+                pcall(function()
+                    ClickRF:InvokeServer(Mouse.Hit.Position)
+                end)
+                task.wait(CONFIG.ClickDelay)
+            end
+        end)
+
+        -- Auto cast loop
+        castThread = task.spawn(function()
+            while running do
+                teleportToSpot()
+                task.wait(0.3)
+                pcall(function()
+                    StartRF:InvokeServer(CONFIG.Zone, CONFIG.CastPos)
+                end)
+                stats.casts += 1
+                task.wait(CONFIG.CastDelay)
+            end
+        end)
+    end
+
+    local function stopLoops()
+        running = false
+        if clickThread then task.cancel(clickThread) clickThread = nil end
+        if castThread  then task.cancel(castThread)  castThread  = nil end
+    end
+
+    -- ── Cleanup ───────────────────────────────────────────────────────────
+    _G.MRCFishCleanup = function()
+        stopLoops()
+        _G.MRCFishLoaded = false
+        Rayfield:Destroy()
+    end
+
+    -- ── UI ────────────────────────────────────────────────────────────────
+    Tab:CreateSection("Auto Fish")
+
+    Tab:CreateToggle({
+        Name         = "Auto Fish",
+        CurrentValue = false,
+        Flag         = "AutoFish",
+        Callback     = function(state)
+            if state then
+                startLoops()
+                Rayfield:Notify({
+                    Title    = "Auto Fish",
+                    Content  = "Started — casting at FishingVillage",
+                    Duration = 4,
+                })
+            else
+                stopLoops()
+                Rayfield:Notify({
+                    Title    = "Auto Fish",
+                    Content  = string.format("Stopped — %d casts this session", stats.casts),
+                    Duration = 4,
+                })
+            end
+        end,
+    })
+
+end)
