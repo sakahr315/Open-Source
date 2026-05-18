@@ -1,0 +1,133 @@
+--// Rayfield
+local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+
+local Window = Rayfield:CreateWindow({
+	Name = "MRC Scripts",
+	LoadingTitle = "Loading...",
+	LoadingSubtitle = "MRC Scripts",
+	ConfigurationSaving = {
+		Enabled = false
+	}
+})
+
+local Tab = Window:CreateTab("Main", 4483362458)
+
+--// Services
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+--// Library
+local Library = require(
+	ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Library")
+)
+
+repeat task.wait() until Library.Loaded
+
+--// Variables
+local Autofarm = false
+local AutoCollect = false
+
+--// Remote
+local OrbRemote = ReplicatedStorage:GetChildren()[38]
+
+--// Autofarm Functions
+local function GetBestCoin()
+	local bestCoin = nil
+	local lowestHealth = math.huge
+
+	pcall(function()
+		for _, coin in ipairs(Library.Things.Coins:GetChildren()) do
+			local healthAttr = coin:FindFirstChild("Health_Attr")
+			local areaAttr = coin:FindFirstChild("Area_Attr")
+
+			if healthAttr and areaAttr then
+				local health = healthAttr.Value
+				local area = areaAttr.Value
+
+				if health > 0 and Library.WorldCmds.HasArea(area) then
+					if health < lowestHealth then
+						lowestHealth = health
+						bestCoin = coin
+					end
+				end
+			end
+		end
+	end)
+
+	return bestCoin
+end
+
+local function FarmCoin(coin)
+	pcall(function()
+		if coin then
+			Library.Signal.Fire("Group Select Coin", coin)
+		end
+	end)
+end
+
+--// Orb Functions
+local function CollectAllOrbs()
+	pcall(function()
+		local orbTable = {}
+
+		for _, orb in ipairs(Library.Things.Orbs:GetChildren()) do
+			if orb and orb.Name then
+				table.insert(orbTable, orb.Name)
+			end
+		end
+
+		if #orbTable > 0 then
+			OrbRemote:FireServer(orbTable)
+		end
+	end)
+end
+
+--// Auto Farm Toggle
+Tab:CreateToggle({
+	Name = "Auto Farm",
+	CurrentValue = false,
+	Flag = "AutoFarm",
+	Callback = function(Value)
+		Autofarm = Value
+
+		if Autofarm then
+			task.spawn(function()
+				while Autofarm do
+					pcall(function()
+						local coin = GetBestCoin()
+
+						if coin then
+							FarmCoin(coin)
+						end
+					end)
+
+					task.wait(0.2)
+				end
+			end)
+		end
+	end
+})
+
+--// Auto Collect Orbs Toggle
+Tab:CreateToggle({
+	Name = "Auto Collect Orbs",
+	CurrentValue = false,
+	Flag = "AutoCollectOrbs",
+	Callback = function(Value)
+		AutoCollect = Value
+
+		if AutoCollect then
+			task.spawn(function()
+				while AutoCollect do
+					CollectAllOrbs()
+					task.wait(0.15)
+				end
+			end)
+		end
+	end
+})
+
+Rayfield:Notify({
+	Title = "Loaded",
+	Content = "Autofarm + Orb Collect initialized",
+	Duration = 5
+})
